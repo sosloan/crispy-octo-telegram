@@ -29,44 +29,82 @@ module Saratoga
     end
   end
 
+  # Connection types for nested lists inside an orchard must be defined before
+  # OrchardType so they can be referenced as field types.
+  VarietiesInOrchardConnection = GenQL.connection_type(
+    'VarietiesInOrchardConnection', VarietyType,
+    description: 'Paginated varieties within an orchard'
+  )
+  HarvestsInOrchardConnection = GenQL.connection_type(
+    'HarvestsInOrchardConnection', HarvestType,
+    description: 'Paginated harvests within an orchard'
+  )
+
   OrchardType = GenQL::ObjectType.new('Orchard', description: 'A named orchard block') do
     field :id,               GenQL::IDType,     description: 'Unique identifier'
     field :name,             GenQL::StringType, description: 'Orchard block name'
     field :location,         GenQL::StringType, description: 'Geographic location'
     field :established_year, GenQL::IntType,    description: 'Year the block was planted'
 
-    field :varieties, VarietyType, description: 'Apple varieties grown in this orchard' do |orchard, _args, _ctx|
-      orchard.varieties
+    field :varieties, VarietiesInOrchardConnection,
+          description: 'Paginated apple varieties grown in this orchard' do |orchard, args, _ctx|
+      GenQL::Paginator.paginate(orchard.varieties,
+                                first: args['first'],
+                                offset: args['offset'] || 0)
     end
 
-    field :harvests, HarvestType, description: 'All harvests recorded for this orchard' do |orchard, _args, _ctx|
-      Store.harvests.select { |h| h.orchard_id == orchard.id }
+    field :harvests, HarvestsInOrchardConnection,
+          description: 'Paginated harvests recorded for this orchard' do |orchard, args, _ctx|
+      collection = Store.harvests.select { |h| h.orchard_id == orchard.id }
+      GenQL::Paginator.paginate(collection,
+                                first: args['first'],
+                                offset: args['offset'] || 0)
     end
   end
+
+  # ---------------------------------------------------------------------------
+  # Top-level connection types
+  # ---------------------------------------------------------------------------
+
+  OrchardsConnection  = GenQL.connection_type('OrchardsConnection',  OrchardType,
+                                              description: 'Paginated list of orchards')
+  VarietiesConnection = GenQL.connection_type('VarietiesConnection', VarietyType,
+                                              description: 'Paginated list of varieties')
+  HarvestsConnection  = GenQL.connection_type('HarvestsConnection',  HarvestType,
+                                              description: 'Paginated list of harvests')
 
   # ---------------------------------------------------------------------------
   # Root query type
   # ---------------------------------------------------------------------------
 
   QueryType = GenQL::ObjectType.new('Query') do
-    field :orchards, OrchardType, description: 'List all orchards' do |_parent, _args, _ctx|
-      Store.orchards
+    field :orchards, OrchardsConnection,
+          description: 'Paginated list of all orchards' do |_parent, args, _ctx|
+      GenQL::Paginator.paginate(Store.orchards,
+                                first: args['first'],
+                                offset: args['offset'] || 0)
     end
 
     field :orchard, OrchardType, description: 'Fetch a single orchard by id' do |_parent, args, _ctx|
       Store.orchards.find { |o| o.id == args['id'] }
     end
 
-    field :varieties, VarietyType, description: 'List all varieties' do |_parent, _args, _ctx|
-      Store.varieties
+    field :varieties, VarietiesConnection,
+          description: 'Paginated list of all varieties' do |_parent, args, _ctx|
+      GenQL::Paginator.paginate(Store.varieties,
+                                first: args['first'],
+                                offset: args['offset'] || 0)
     end
 
     field :variety, VarietyType, description: 'Fetch a single variety by id' do |_parent, args, _ctx|
       Store.varieties.find { |v| v.id == args['id'] }
     end
 
-    field :harvests, HarvestType, description: 'List all harvests' do |_parent, _args, _ctx|
-      Store.harvests
+    field :harvests, HarvestsConnection,
+          description: 'Paginated list of all harvests' do |_parent, args, _ctx|
+      GenQL::Paginator.paginate(Store.harvests,
+                                first: args['first'],
+                                offset: args['offset'] || 0)
     end
   end
 
@@ -92,3 +130,4 @@ module Saratoga
 
   SCHEMA = GenQL::Schema.new(query: QueryType, mutation: MutationType)
 end
+
