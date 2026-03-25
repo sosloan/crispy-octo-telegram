@@ -36,6 +36,60 @@ RSpec.describe GenQL::Executor do
   let(:schema)   { GenQL::Schema.new(query: query_type, mutation: mutation_type) }
   subject(:exec) { described_class.new(schema) }
 
+  describe '#subscribe' do
+    let(:subscription_type) do
+      outer_person_type = person_type
+      GenQL::ObjectType.new('Subscription') do
+        field(:personAdded, outer_person_type, description: 'Fires when a person is added')
+      end
+    end
+
+    let(:schema_with_sub) do
+      GenQL::Schema.new(query: query_type, mutation: mutation_type, subscription: subscription_type)
+    end
+    subject(:exec_with_sub) { described_class.new(schema_with_sub) }
+
+    before { GenQL::SubscriptionBroker.reset! }
+    after  { GenQL::SubscriptionBroker.reset! }
+
+    it 'returns an array of subscription IDs' do
+      ids = exec_with_sub.subscribe('subscription { personAdded { name } }') { |_r| }
+      expect(ids).to be_an(Array)
+      expect(ids.length).to eq 1
+    end
+
+    it 'delivers resolved payloads when the event is published' do
+      payloads = []
+      exec_with_sub.subscribe('subscription { personAdded { name age } }') { |r| payloads << r }
+
+      GenQL::SubscriptionBroker.publish('personAdded', { 'name' => 'Carol', 'age' => 28 })
+
+      expect(payloads.length).to eq 1
+      expect(payloads.first[:data]['personAdded']).to eq({ 'name' => 'Carol', 'age' => 28 })
+    end
+
+    it 'stops delivering after unsubscribing' do
+      payloads = []
+      ids = exec_with_sub.subscribe('subscription { personAdded { name } }') { |r| payloads << r }
+      ids.each { |id| GenQL::SubscriptionBroker.unsubscribe(id) }
+
+      GenQL::SubscriptionBroker.publish('personAdded', { 'name' => 'Dave', 'age' => 40 })
+      expect(payloads).to be_empty
+    end
+
+    it 'raises ExecutionError when no subscription type is defined in the schema' do
+      expect do
+        exec.subscribe('subscription { personAdded { name } }') { |_r| }
+      end.to raise_error(GenQL::ExecutionError, /No subscription type/)
+    end
+
+    it 'raises ExecutionError for unknown subscription fields' do
+      expect do
+        exec_with_sub.subscribe('subscription { unknownField { name } }') { |_r| }
+      end.to raise_error(GenQL::ExecutionError, /unknownField/)
+    end
+  end
+
   describe '#execute' do
     it 'resolves a simple scalar field' do
       result = exec.execute('{ greeting }')
@@ -103,6 +157,77 @@ RSpec.describe GenQL::Executor do
       s      = GenQL::Schema.new(query: qt)
       result = described_class.new(s).execute('{ me { name age } }')
       expect(result[:data]['me']).to eq({ 'name' => 'Alice', 'age' => 31 })
+    end
+  end
+
+  describe 'cache integration' do
+    subject(:exec) { described_class.new(schema, cache: GenQL::Cache.new) }
+
+    it 'returns the correct result when cache is enabled' do
+      result = exec.execute('{ greeting }')
+      expect(result[:data]['greeting']).to eq 'Hello from Saratoga'
+    end
+
+    it 'serves subsequent identical queries from cache (resolver called once)' do
+      call_count = 0
+      counting_qt = GenQL::ObjectType.new('Query') do
+        field(:ping, GenQL::StringType) do |_p, _a, _c|
+          call_count += 1
+          'pong'
+        end
+      end
+      cached_exec = described_class.new(
+        GenQL::Schema.new(query: counting_qt),
+        cache: GenQL::Cache.new
+      )
+
+      cached_exec.execute('{ ping }')
+      cached_exec.execute('{ ping }')
+      expect(call_count).to eq 1
+    end
+
+    it 'does not cache mutations' do
+      call_count = 0
+      counting_mt = GenQL::ObjectType.new('Mutation') do
+        field(:echo, GenQL::StringType) do |_p, args, _c|
+          call_count += 1
+          args['value']
+        end
+      end
+      cached_exec = described_class.new(
+        GenQL::Schema.new(query: query_type, mutation: counting_mt),
+        cache: GenQL::Cache.new
+      )
+
+      cached_exec.execute('mutation { echo(value: "a") }')
+      cached_exec.execute('mutation { echo(value: "a") }')
+      expect(call_count).to eq 2
+    end
+
+    it 'treats different query strings as separate cache entries' do
+      result_a = exec.execute('{ greeting }')
+      result_b = exec.execute('{ people { name } }')
+      expect(result_a[:data]['greeting']).to eq 'Hello from Saratoga'
+      expect(result_b[:data]['people']).to be_an(Array)
+    end
+
+    it 'respects cache_ttl and re-executes after expiry' do
+      call_count = 0
+      counting_qt = GenQL::ObjectType.new('Query') do
+        field(:tick, GenQL::IntType) do |_p, _a, _c|
+          call_count += 1
+          call_count
+        end
+      end
+      cached_exec = described_class.new(
+        GenQL::Schema.new(query: counting_qt),
+        cache: GenQL::Cache.new
+      )
+
+      cached_exec.execute('{ tick }', cache_ttl: 0.01)
+      sleep 0.05
+      cached_exec.execute('{ tick }', cache_ttl: 0.01)
+      expect(call_count).to eq 2
     end
   end
 end

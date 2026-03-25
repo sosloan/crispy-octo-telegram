@@ -114,20 +114,30 @@ module Saratoga
 
   MutationType = GenQL::ObjectType.new('Mutation') do
     field :addHarvest, HarvestType, description: 'Record a new harvest' do |_parent, args, _ctx|
-      Store.add_harvest(
+      harvest = Store.add_harvest(
         orchard_id: args['orchard_id'],
         variety_id: args['variety_id'],
         quantity_kg: args['quantity_kg'].to_i,
         harvested_at: args['harvested_at'],
         notes: args['notes']
       )
+      GenQL::SubscriptionBroker.publish('harvestAdded', harvest)
+      harvest
     end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Root subscription type
+  # ---------------------------------------------------------------------------
+
+  SubscriptionType = GenQL::ObjectType.new('Subscription') do
+    field :harvestAdded, HarvestType, description: 'Fired whenever a new harvest is recorded'
   end
 
   # ---------------------------------------------------------------------------
   # Schema
   # ---------------------------------------------------------------------------
 
-  SCHEMA = GenQL::Schema.new(query: QueryType, mutation: MutationType)
+  SCHEMA = GenQL::Schema.new(query: QueryType, mutation: MutationType, subscription: SubscriptionType)
 end
 

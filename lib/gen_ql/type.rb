@@ -113,13 +113,14 @@ module GenQL
   # Schema
   # ---------------------------------------------------------------------------
 
-  # Ties together the root query and mutation types.
+  # Ties together the root query, mutation, and subscription types.
   class Schema
-    attr_reader :query_type, :mutation_type
+    attr_reader :query_type, :mutation_type, :subscription_type
 
-    def initialize(query:, mutation: nil)
-      @query_type    = query
-      @mutation_type = mutation
+    def initialize(query:, mutation: nil, subscription: nil)
+      @query_type        = query
+      @mutation_type     = mutation
+      @subscription_type = subscription
     end
   end
 end
