@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative 'persistence'
+
 module Saratoga
   # Simple value objects for the Saratoga Orchards domain.
   # In a production system these would be backed by a database.
@@ -24,10 +26,19 @@ module Saratoga
   end
 
   # ---------------------------------------------------------------------------
-  # In-memory data store with seed data
+  # In-memory data store with seed data and optional JSON persistence.
+  #
+  # Set +Store.data_file=+ (or the +SARATOGA_DATA_FILE+ environment variable)
+  # to a writable path before the first access to enable persistence.  When
+  # persistence is enabled:
+  #   • harvests are loaded from the file on first access
+  #   • every +add_harvest+ call flushes the updated list back to the file
+  #   • +reset!+ removes the file so the next boot starts from seed data
   # ---------------------------------------------------------------------------
   module Store
     class << self
+      attr_accessor :data_file
+
       def varieties
         @varieties ||= [
           Variety.new(id: 'v1', name: 'Gravenstein', species: 'Malus domestica',
@@ -58,7 +69,7 @@ module Saratoga
       end
 
       def harvests
-        @harvests ||= [
+        @harvests ||= Persistence.load(data_file) || [
           Harvest.new(id: 'h1', orchard_id: 'o1', variety_id: 'v1',
                       quantity_kg: 1_240, harvested_at: '2023-08-12',
                       notes: 'Excellent crop; minimal pest pressure'),
@@ -85,10 +96,12 @@ module Saratoga
         )
         @next_harvest_id += 1
         harvests << harvest
+        Persistence.save(data_file, harvests)
         harvest
       end
 
       def reset!
+        Persistence.delete(data_file)
         @varieties       = nil
         @orchards        = nil
         @harvests        = nil
