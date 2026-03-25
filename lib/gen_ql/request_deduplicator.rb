@@ -41,6 +41,9 @@ module GenQL
       wait_slot = nil
 
       @mutex.synchronize do
+        # The expiry check and return happen inside the global lock, so
+        # another thread cannot evict or overwrite the entry between the
+        # two operations.
         entry = @cache[key]
         return entry.result if entry && entry.expires_at > Time.now
 

@@ -28,9 +28,9 @@ RSpec.describe GenQL::RequestDeduplicator do
 
     it 'calls the block again after the TTL expires' do
       call_count = 0
-      dedup_short = described_class.new(ttl: 0)
+      dedup_zero_ttl = described_class.new(ttl: 0)
       2.times do
-        dedup_short.execute(:key) do
+        dedup_zero_ttl.execute(:key) do
           call_count += 1
           'value'
         end
@@ -51,9 +51,9 @@ RSpec.describe GenQL::RequestDeduplicator do
 
     it 'does not cache a result when the block raises' do
       call_count = 0
-      dedup_fault = described_class.new(ttl: 60)
+      dedup_long_ttl = described_class.new(ttl: 60)
       begin
-        dedup_fault.execute(:key) do
+        dedup_long_ttl.execute(:key) do
           call_count += 1
           raise 'oops'
         end
@@ -61,7 +61,7 @@ RSpec.describe GenQL::RequestDeduplicator do
         nil
       end
       begin
-        dedup_fault.execute(:key) do
+        dedup_long_ttl.execute(:key) do
           call_count += 1
           raise 'oops'
         end

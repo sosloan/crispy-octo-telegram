@@ -35,7 +35,7 @@ module GenQL
       if mutation?(query_string)
         execute_fresh(query_string, context)
       else
-        @deduplicator.execute([query_string, context]) { execute_fresh(query_string, context) }
+        @deduplicator.execute(cache_key(query_string, context)) { execute_fresh(query_string, context) }
       end
     end
 
@@ -43,9 +43,19 @@ module GenQL
 
     # Returns true when +query_string+ begins with the "mutation" keyword,
     # indicating that the operation has side-effects and must not be
-    # deduplicated.
+    # deduplicated.  Matching is case-insensitive to handle any client
+    # capitalisation, although the GenQL lexer normalises keywords to
+    # lower-case in practice.
     def mutation?(query_string)
-      query_string.lstrip.start_with?('mutation')
+      query_string.lstrip.downcase.start_with?('mutation')
+    end
+
+    # Build the cache key used to identify a unique request.
+    # Ruby Array#hash (and Hash#hash) is content-based in MRI 3.x, so two
+    # arrays with equal elements always produce the same key, making this
+    # safe to use as a Hash lookup key within a single process.
+    def cache_key(query_string, context)
+      [query_string, context]
     end
 
     # Execute a query string unconditionally (no deduplication).
