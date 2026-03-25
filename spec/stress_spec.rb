@@ -5,11 +5,11 @@ require 'gen_ql'
 require 'saratoga'
 
 CONCURRENT_STRESS_QUERIES = [
-  '{ orchards { name } }',
-  '{ orchards { id name location established_year } }',
-  '{ orchards { name varieties { name season } } }',
-  '{ varieties { id name species season notes } }',
-  '{ harvests { id orchard_id variety_id quantity_kg harvested_at } }'
+  '{ orchards { nodes { name } } }',
+  '{ orchards { nodes { id name location established_year } } }',
+  '{ orchards { nodes { name varieties { nodes { name season } } } } }',
+  '{ varieties { nodes { id name species season notes } } }',
+  '{ harvests { nodes { id orchard_id variety_id quantity_kg harvested_at } } }'
 ].freeze
 
 RSpec.describe 'Stress tests' do
@@ -44,7 +44,7 @@ RSpec.describe 'Stress tests' do
     end
 
     it 'tokenizes the same query 1,000 times without error' do
-      source = '{ orchards { name location } }'
+      source = '{ orchards { nodes { name location } } }'
       expect { 1_000.times { GenQL::Lexer.new(source).tokenize } }.not_to raise_error
     end
 
@@ -67,8 +67,8 @@ RSpec.describe 'Stress tests' do
 
     it 'parses a selection with 100 sibling fields' do
       fields = Array.new(100, 'name').join(' ')
-      doc = parse("{ orchards { #{fields} } }")
-      expect(doc.operations.first.selections.first.selections.length).to eq 100
+      doc = parse("{ orchards { nodes { #{fields} } } }")
+      expect(doc.operations.first.selections.first.selections.first.selections.length).to eq 100
     end
 
     it 'parses a field with 50 arguments' do
@@ -85,12 +85,12 @@ RSpec.describe 'Stress tests' do
     end
 
     it 'parses 1,000 documents sequentially without error' do
-      source = '{ orchards { name varieties { name season } } }'
+      source = '{ orchards { nodes { name varieties { nodes { name season } } } } }'
       expect { 1_000.times { parse(source) } }.not_to raise_error
     end
 
     it 'parses a document containing 20 operations' do
-      ops = Array.new(20) { 'query { orchards }' }.join(' ')
+      ops = Array.new(20) { 'query { orchards { nodes { id } } }' }.join(' ')
       doc = parse(ops)
       expect(doc.operations.length).to eq 20
     end
@@ -113,7 +113,7 @@ RSpec.describe 'Stress tests' do
   # ---------------------------------------------------------------------------
   describe 'GenQL::Executor under stress' do
     it 'executes 500 iterations of a simple query without error' do
-      query = '{ orchards { name } }'
+      query = '{ orchards { nodes { name } } }'
       expect { 500.times { executor.execute(query) } }.not_to raise_error
     end
 
@@ -121,19 +121,21 @@ RSpec.describe 'Stress tests' do
       query = <<~GQL
         {
           orchards {
-            id name location established_year
-            varieties { id name species season notes }
-            harvests  { id quantity_kg harvested_at }
+            nodes {
+              id name location established_year
+              varieties { nodes { id name species season notes } }
+              harvests  { nodes { id quantity_kg harvested_at } }
+            }
           }
-          varieties { id name species season notes }
-          harvests  { id orchard_id variety_id quantity_kg harvested_at notes
-                      variety { name season } }
+          varieties { nodes { id name species season notes } }
+          harvests  { nodes { id orchard_id variety_id quantity_kg harvested_at notes
+                              variety { name season } } }
         }
       GQL
       result = executor.execute(query)
-      expect(result[:data]['orchards']).to  be_an(Array)
-      expect(result[:data]['varieties']).to be_an(Array)
-      expect(result[:data]['harvests']).to  be_an(Array)
+      expect(result[:data]['orchards']['nodes']).to  be_an(Array)
+      expect(result[:data]['varieties']['nodes']).to be_an(Array)
+      expect(result[:data]['harvests']['nodes']).to  be_an(Array)
       expect(result[:errors]).to be_nil
     end
 
@@ -144,12 +146,12 @@ RSpec.describe 'Stress tests' do
         result = executor.execute(query)
         expect(result[:errors]).to be_nil
       end
-      result = executor.execute('{ harvests { id } }')
-      expect(result[:data]['harvests'].length).to eq(4 + 200)
+      result = executor.execute('{ harvests { page_info { total_count } } }')
+      expect(result[:data]['harvests']['page_info']['total_count']).to eq(4 + 200)
     end
 
     it 'accumulates no errors across 200 successful read queries' do
-      query = '{ orchards { name location varieties { name } harvests { id } } }'
+      query = '{ orchards { nodes { name location varieties { nodes { name } } harvests { nodes { id } } } } }'
       errors_seen = []
       200.times do
         result = executor.execute(query)
@@ -266,10 +268,10 @@ RSpec.describe 'Stress tests' do
     it 'returns consistent orchard data across 2,001 concurrent readers' do
       results = Array.new(2_001)
       run_concurrent_barrier(2_001) do |i|
-        results[i] = executor.execute('{ orchards { id name } }')
+        results[i] = executor.execute('{ orchards { nodes { id name } } }')
       end
-      first = results.first[:data]['orchards']
-      expect(results.all? { |r| r[:data]['orchards'] == first }).to be true
+      first = results.first[:data]['orchards']['nodes']
+      expect(results.all? { |r| r[:data]['orchards']['nodes'] == first }).to be true
     end
   end
 
@@ -284,8 +286,8 @@ RSpec.describe 'Stress tests' do
           "quantity_kg: #{200 + i}, harvested_at: \"2024-09-01\") { id } }"
         )
       end
-      result = executor.execute('{ harvests { id orchard_id variety_id quantity_kg } }')
-      expect(result[:data]['harvests'].length).to eq 104
+      result = executor.execute('{ harvests { nodes { id orchard_id variety_id quantity_kg } } }')
+      expect(result[:data]['harvests']['nodes'].length).to eq 104
       expect(result[:errors]).to be_nil
     end
 
@@ -298,14 +300,16 @@ RSpec.describe 'Stress tests' do
           harvested_at: '2024-08-15'
         )
       end
-      result = executor.execute('{ orchards { id name varieties { name } harvests { id quantity_kg } } }')
-      orchards = result[:data]['orchards']
+      result = executor.execute(
+        '{ orchards { nodes { id name varieties { nodes { name } } harvests { nodes { id quantity_kg } } } } }'
+      )
+      orchards = result[:data]['orchards']['nodes']
       expect(orchards.length).to eq 3
-      expect(orchards.all? { |o| o['harvests'].is_a?(Array) }).to be true
+      expect(orchards.all? { |o| o['harvests']['nodes'].is_a?(Array) }).to be true
     end
 
     it 'returns identical data for 50 repeated identical queries' do
-      query = '{ orchards { id name } varieties { id name } harvests { id } }'
+      query = '{ orchards { nodes { id name } } varieties { nodes { id name } } harvests { nodes { id } } }'
       first_result = executor.execute(query)
       50.times do
         result = executor.execute(query)
@@ -320,7 +324,7 @@ RSpec.describe 'Stress tests' do
         mut_result = executor.execute(mut)
         expect(mut_result[:errors]).to be_nil
 
-        qry_result = executor.execute('{ harvests { id } }')
+        qry_result = executor.execute('{ harvests { nodes { id } } }')
         expect(qry_result[:errors]).to be_nil
       end
     end

@@ -80,5 +80,25 @@ RSpec.describe GenQL::Lexer do
     it 'raises LexError on unterminated string' do
       expect { described_class.new('"unterminated').tokenize }.to raise_error(GenQL::LexError)
     end
+
+    it 'tokenizes a COLON token' do
+      types = token_types('key: value')
+      expect(types).to include(:COLON)
+    end
+
+    it 'tokenizes LPAREN and RPAREN' do
+      types = token_types('field(arg: 1)')
+      expect(types).to include(:LPAREN, :RPAREN)
+    end
+
+    it 'handles multiple whitespace characters between tokens' do
+      types = token_types("{    name   }")
+      expect(types).to eq %i[LBRACE NAME RBRACE EOF]
+    end
+
+    it 'tokenizes negative integers' do
+      tokens = described_class.new('-42').tokenize
+      expect(tokens.first).to have_attributes(type: :INT, value: -42)
+    end
   end
 end

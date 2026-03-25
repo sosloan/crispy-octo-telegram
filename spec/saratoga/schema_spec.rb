@@ -264,5 +264,34 @@ RSpec.describe 'Saratoga schema' do
       expect(payloads).to be_empty
     end
   end
+
+  describe 'orchard field resolution' do
+    it 'returns the correct established_year for an orchard' do
+      result = executor.execute('{ orchard(id: "o1") { established_year } }')
+      expect(result[:data]['orchard']['established_year']).to eq 1952
+    end
+
+    it 'returns varieties count for an orchard via connection' do
+      result = executor.execute('{ orchard(id: "o1") { varieties { page_info { total_count } } } }')
+      expect(result[:data]['orchard']['varieties']['page_info']['total_count']).to eq 3
+    end
+
+    it 'returns orchard location correctly' do
+      result = executor.execute('{ orchard(id: "o2") { name location } }')
+      expect(result[:data]['orchard']['location']).to eq 'Los Gatos, CA'
+    end
+  end
+
+  describe 'variety field resolution' do
+    it 'returns species for a variety' do
+      result = executor.execute('{ variety(id: "v1") { species } }')
+      expect(result[:data]['variety']['species']).to eq 'Malus domestica'
+    end
+
+    it 'returns notes for a variety' do
+      result = executor.execute('{ variety(id: "v2") { notes } }')
+      expect(result[:data]['variety']['notes']).to eq 'Crisp with a spiced finish'
+    end
+  end
 end
 

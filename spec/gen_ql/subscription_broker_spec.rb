@@ -62,4 +62,26 @@ RSpec.describe GenQL::SubscriptionBroker do
       expect(received).to be_empty
     end
   end
+
+  describe '.subscribe to multiple events' do
+    it 'a single subscriber can listen to multiple distinct events' do
+      received = []
+      described_class.subscribe('evt1') { |d| received << "1:#{d}" }
+      described_class.subscribe('evt2') { |d| received << "2:#{d}" }
+      described_class.publish('evt1', 'x')
+      described_class.publish('evt2', 'y')
+      expect(received).to contain_exactly('1:x', '2:y')
+    end
+
+    it 'publishes nil data without error' do
+      received = []
+      described_class.subscribe('nil_evt') { |d| received << d }
+      described_class.publish('nil_evt', nil)
+      expect(received).to eq [nil]
+    end
+
+    it 'does nothing when publishing to an event with no subscribers' do
+      expect { described_class.publish('phantom', 'data') }.not_to raise_error
+    end
+  end
 end

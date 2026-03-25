@@ -17,37 +17,24 @@ require 'saratoga'
 #   GET  /           Health check
 #   POST /genql      Execute a query or mutation
 #                    Body: { "query": "...", "context": {...} }
+#                    Body (batch): [ { "query": "...", "context": {...} }, ... ]
 #   GET  /schema     Introspection: schema as JSON
 #
 # WebSocket endpoint:
 #   GET  /subscriptions   Upgrade to WebSocket, then send JSON frames:
 #                           { "query": "subscription { harvestAdded { ... } }" }
 #                         The server pushes { "data": { ... } } frames as events fire.
-# Exposes a single endpoint:
-#   POST /genql   Content-Type: application/json
-#                 Body (single):  { "query": "...", "context": {...} }
-#                 Body (batch):   [ { "query": "...", "context": {...} }, ... ]
-#
-# Returns (single):
-#   200  { "data": {...} }
-#   200  { "data": {...}, "errors": [...] }   (partial success)
-#   400  { "errors": [{ "message": "..." }] } (parse / request errors)
-#
-# Returns (batch):
-#   200  [ { "data": {...} }, { "data": {...}, "errors": [...] }, ... ]
 # ---------------------------------------------------------------------------
 class SaratogaApp < Sinatra::Base
   EXECUTOR = GenQL::Executor.new(Saratoga::SCHEMA)
 
-  # Enable JSON persistence: store harvests in data/store.json relative to
-  # this file so the server retains mutations across restarts without needing
-  # an external database.
-  Saratoga::Store.data_file =
-    ENV.fetch('SARATOGA_DATA_FILE', File.join(__dir__, 'data', 'store.json'))
-
   configure do
     set :show_exceptions, false
     set :raise_errors,    false
+  end
+
+  configure :test do
+    disable :protection
   end
 
   # Health check
@@ -114,6 +101,27 @@ class SaratogaApp < Sinatra::Base
     end
 
     ws.rack_response
+  end
+
+  # Introspection: describe the schema in plain JSON
+  get '/schema' do
+    schema_types = [Saratoga::QueryType, Saratoga::MutationType, Saratoga::SubscriptionType,
+                    Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType,
+                    Saratoga::OrchardsConnection, Saratoga::VarietiesConnection,
+                    Saratoga::HarvestsConnection, Saratoga::VarietiesInOrchardConnection,
+                    Saratoga::HarvestsInOrchardConnection, GenQL::PageInfoType]
+    types = {}
+    schema_types.each do |type|
+      types[type.name] = {
+        description: type.description,
+        fields: type.fields.transform_values do |f|
+          { type: f.type.name, description: f.description }
+        end
+      }
+    end
+    json schema: types
+  end
+
   private
 
   def execute_query_item(item)
@@ -124,26 +132,5 @@ class SaratogaApp < Sinatra::Base
     { errors: [{ message: e.message }] }
   rescue StandardError => e
     { errors: [{ message: "Internal server error: #{e.message}" }] }
-  end
-
-  # Introspection: describe the schema in plain JSON
-  get '/schema' do
-    types = {}
-    [Saratoga::QueryType, Saratoga::MutationType,
-     Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType,
-     Saratoga::OrchardsConnection, Saratoga::VarietiesConnection, Saratoga::HarvestsConnection,
-     Saratoga::VarietiesInOrchardConnection, Saratoga::HarvestsInOrchardConnection,
-     GenQL::PageInfoType].each do |type|
-    schema_types = [Saratoga::QueryType, Saratoga::MutationType, Saratoga::SubscriptionType,
-                    Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType]
-    schema_types.each do |type|
-      types[type.name] = {
-        description: type.description,
-        fields: type.fields.transform_values do |f|
-          { type: f.type.name, description: f.description }
-        end
-      }
-    end
-    json schema: types
   end
 end

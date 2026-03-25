@@ -98,62 +98,66 @@ RSpec.describe Saratoga::Persistence do
 end
 
 RSpec.describe Saratoga::Store do
-  let(:tmpdir)    { Dir.mktmpdir }
-  let(:data_file) { File.join(tmpdir, 'store.json') }
+  before { Saratoga::Store.reset! }
+  after  { Saratoga::Store.reset! }
 
-  before do
-    Saratoga::Store.data_file = data_file
-    Saratoga::Store.reset!
+  describe '.harvests' do
+    it 'returns the seed harvests on a fresh store' do
+      expect(Saratoga::Store.harvests.length).to eq 4
+    end
+
+    it 'returns Harvest value objects' do
+      expect(Saratoga::Store.harvests.first).to be_a(Saratoga::Harvest)
+    end
   end
 
-  after do
-    Saratoga::Store.data_file = nil
-    Saratoga::Store.reset!
-    FileUtils.remove_entry(tmpdir)
-  end
-
-  describe 'persistence across simulated restarts' do
-    it 'persists harvests added via add_harvest' do
+  describe '.add_harvest' do
+    it 'persists a harvest and increases the count' do
       Saratoga::Store.add_harvest(
         orchard_id: 'o1', variety_id: 'v1',
         quantity_kg: 999, harvested_at: '2025-01-01'
       )
-      expect(File.exist?(data_file)).to be true
+      expect(Saratoga::Store.harvests.length).to eq 5
     end
 
-    it 'reloads persisted harvests after reset of in-memory state' do
+    it 'returns the newly created Harvest object' do
+      harvest = Saratoga::Store.add_harvest(
+        orchard_id: 'o1', variety_id: 'v1',
+        quantity_kg: 999, harvested_at: '2025-01-01', notes: 'test note'
+      )
+      expect(harvest).to be_a(Saratoga::Harvest)
+      expect(harvest.quantity_kg).to eq 999
+      expect(harvest.notes).to eq 'test note'
+    end
+
+    it 'stores the harvest so subsequent queries see it' do
       Saratoga::Store.add_harvest(
         orchard_id: 'o1', variety_id: 'v1',
         quantity_kg: 999, harvested_at: '2025-01-01', notes: 'test note'
       )
-
-      # Simulate a server restart: clear in-memory state, keep the file.
-      Saratoga::Store.instance_variable_set(:@harvests, nil)
-      Saratoga::Store.instance_variable_set(:@next_harvest_id, nil)
-
       reloaded = Saratoga::Store.harvests
       persisted = reloaded.find { |h| h.quantity_kg == 999 }
       expect(persisted).not_to be_nil
       expect(persisted.notes).to eq 'test note'
     end
 
-    it 'falls back to seed data when no file exists' do
-      # data_file points to a nonexistent file; seed data should be returned
-      Saratoga::Store.data_file = File.join(tmpdir, 'nonexistent.json')
+    it 'always starts from seed count after reset' do
       Saratoga::Store.reset!
       expect(Saratoga::Store.harvests.length).to eq 4
     end
   end
 
   describe '#reset!' do
-    it 'deletes the persistence file' do
-      Saratoga::Store.add_harvest(
-        orchard_id: 'o1', variety_id: 'v1',
-        quantity_kg: 1, harvested_at: '2025-01-01'
-      )
-      expect(File.exist?(data_file)).to be true
+    it 'restores the seed harvest count after bulk adds' do
+      3.times do
+        Saratoga::Store.add_harvest(
+          orchard_id: 'o1', variety_id: 'v1',
+          quantity_kg: 1, harvested_at: '2025-01-01'
+        )
+      end
+      expect(Saratoga::Store.harvests.length).to eq 7
       Saratoga::Store.reset!
-      expect(File.exist?(data_file)).to be false
+      expect(Saratoga::Store.harvests.length).to eq 4
     end
   end
 end

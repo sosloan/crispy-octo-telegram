@@ -83,5 +83,21 @@ RSpec.describe GenQL::Parser do
     it 'raises ParseError when closing brace is missing' do
       expect { parse('{ orchards') }.to raise_error(GenQL::ParseError)
     end
+
+    it 'parses a field with float argument' do
+      doc  = parse('{ item(weight: 3.14) { id } }')
+      args = doc.operations.first.selections.first.arguments
+      expect(args['weight']).to eq 3.14
+    end
+
+    it 'parses an anonymous query (no explicit keyword)' do
+      doc = parse('{ greeting }')
+      expect(doc.operations.first.name).to be_nil
+    end
+
+    it 'parses a named query' do
+      doc = parse('query MyQuery { greeting }')
+      expect(doc.operations.first.name).to eq 'MyQuery'
+    end
   end
 end

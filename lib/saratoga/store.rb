@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require_relative 'database'
-require_relative 'persistence'
 
 module Saratoga
   # ---------------------------------------------------------------------------
@@ -32,20 +31,10 @@ module Saratoga
   #
   # All public methods return domain value objects (Variety, Orchard, Harvest)
   # so the GenQL schema resolvers and the rest of the application are
-  # unaffected by the change from in-memory arrays to a real database.
-  # In-memory data store with seed data and optional JSON persistence.
-  #
-  # Set +Store.data_file=+ (or the +SARATOGA_DATA_FILE+ environment variable)
-  # to a writable path before the first access to enable persistence.  When
-  # persistence is enabled:
-  #   • harvests are loaded from the file on first access
-  #   • every +add_harvest+ call flushes the updated list back to the file
-  #   • +reset!+ removes the file so the next boot starts from seed data
+  # unaffected by the underlying database implementation.
   # ---------------------------------------------------------------------------
   module Store
     class << self
-      attr_accessor :data_file
-
       def varieties
         db.execute('SELECT id, name, species, season, notes FROM varieties ORDER BY id').map do |row|
           Variety.new(id: row['id'], name: row['name'], species: row['species'],
@@ -69,17 +58,6 @@ module Saratoga
         db.execute(
           'SELECT id, orchard_id, variety_id, quantity_kg, harvested_at, notes FROM harvests ORDER BY id'
         ).map { |row| harvest_from_row(row) }
-        @harvests ||= Persistence.load(data_file) || [
-          Harvest.new(id: 'h1', orchard_id: 'o1', variety_id: 'v1',
-                      quantity_kg: 1_240, harvested_at: '2023-08-12',
-                      notes: 'Excellent crop; minimal pest pressure'),
-          Harvest.new(id: 'h2', orchard_id: 'o1', variety_id: 'v2',
-                      quantity_kg: 980,   harvested_at: '2023-10-05', notes: nil),
-          Harvest.new(id: 'h3', orchard_id: 'o2', variety_id: 'v4',
-                      quantity_kg: 560,   harvested_at: '2023-09-18', notes: nil),
-          Harvest.new(id: 'h4', orchard_id: 'o3', variety_id: 'v1',
-                      quantity_kg: 430,   harvested_at: '2023-08-20', notes: nil)
-        ]
       end
 
       # Mutation helpers --------------------------------------------------
@@ -93,10 +71,6 @@ module Saratoga
         )
         Harvest.new(id: next_id, orchard_id: orchard_id, variety_id: variety_id,
                     quantity_kg: quantity_kg, harvested_at: harvested_at, notes: notes)
-        @next_harvest_id += 1
-        harvests << harvest
-        Persistence.save(data_file, harvests)
-        harvest
       end
 
       # Reset the database to a clean seeded state (used for test isolation).
@@ -125,11 +99,6 @@ module Saratoga
           harvested_at: row['harvested_at'],
           notes: row['notes']
         )
-        Persistence.delete(data_file)
-        @varieties       = nil
-        @orchards        = nil
-        @harvests        = nil
-        @next_harvest_id = nil
       end
     end
   end
