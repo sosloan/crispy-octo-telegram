@@ -26,6 +26,11 @@ RSpec.describe GenQL::Parser do
       expect(doc.operations.first.type).to eq :mutation
     end
 
+    it 'parses an explicit subscription keyword' do
+      doc = parse('subscription { harvestAdded { id } }')
+      expect(doc.operations.first.type).to eq :subscription
+    end
+
     it 'captures the operation name' do
       doc = parse('query GetOrchards { orchards }')
       expect(doc.operations.first.name).to eq 'GetOrchards'

@@ -29,6 +29,11 @@ RSpec.describe GenQL::Lexer do
       expect(types).to include(:MUTATION)
     end
 
+    it 'recognises the subscription keyword' do
+      types = token_types('subscription { }')
+      expect(types).to include(:SUBSCRIPTION)
+    end
+
     it 'tokenizes a NAME' do
       tokens = described_class.new('orchards').tokenize
       expect(tokens.first).to have_attributes(type: :NAME, value: 'orchards')
