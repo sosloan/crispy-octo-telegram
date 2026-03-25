@@ -18,21 +18,46 @@ module GenQL
   #   • Recurse into sub-selections when the resolved value is an object or an
   #     array of objects.
   #   • Collect field-level errors without aborting the whole execution.
+  #   • Optionally cache the results of read-only (non-mutation) operations
+  #     using a +GenQL::Cache+ instance supplied at construction time.
   class Executor
-    def initialize(schema)
+    # @param schema [GenQL::Schema]
+    # @param cache  [GenQL::Cache, nil]  optional query-result cache;
+    #   results are cached per unique query string for query operations only.
+    def initialize(schema, cache: nil)
       @schema = schema
+      @cache  = cache
     end
 
     # @param query_string [String]  GenQL document
     # @param variables    [Hash]    named variable bindings (future extension)
     # @param context      [Hash]    caller-supplied context forwarded to resolvers
+    # @param cache_ttl    [Numeric, nil]  per-call TTL override (seconds);
+    #   passed through to the cache only when caching is enabled.
     # @return [Hash]  { data: Hash, errors: Array } (errors key omitted when empty)
-    def execute(query_string, variables: {}, context: {}) # rubocop:disable Lint/UnusedMethodArgument
+    def execute(query_string, variables: {}, context: {}, cache_ttl: nil) # rubocop:disable Lint/UnusedMethodArgument
       tokens   = Lexer.new(query_string).tokenize
       document = Parser.new(tokens).parse
 
-      data, errors = execute_document(document, context)
+      if @cache && query_only?(document)
+        @cache.fetch(query_string, ttl: cache_ttl) do
+          build_response(document, context)
+        end
+      else
+        build_response(document, context)
+      end
+    end
 
+    private
+
+    # Returns true when every operation in +document+ is a read-only query.
+    # Mutations must never be cached because they alter application state.
+    def query_only?(document)
+      document.operations.all? { |op| op.type == :query }
+    end
+
+    def build_response(document, context)
+      data, errors = execute_document(document, context)
       response = { data: data }
       response[:errors] = errors unless errors.empty?
       response
