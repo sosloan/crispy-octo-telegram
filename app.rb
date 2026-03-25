@@ -24,6 +24,12 @@ require 'saratoga'
 class SaratogaApp < Sinatra::Base
   EXECUTOR = GenQL::Executor.new(Saratoga::SCHEMA)
 
+  # Enable JSON persistence: store harvests in data/store.json relative to
+  # this file so the server retains mutations across restarts without needing
+  # an external database.
+  Saratoga::Store.data_file =
+    ENV.fetch('SARATOGA_DATA_FILE', File.join(__dir__, 'data', 'store.json'))
+
   configure do
     set :show_exceptions, false
     set :raise_errors,    false
