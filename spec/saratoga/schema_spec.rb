@@ -114,4 +114,52 @@ RSpec.describe 'Saratoga schema' do
       expect(result[:errors]).not_to be_empty
     end
   end
+
+  describe 'subscription harvestAdded' do
+    before { GenQL::SubscriptionBroker.reset! }
+    after  { GenQL::SubscriptionBroker.reset! }
+
+    it 'delivers a harvest payload when addHarvest mutation fires' do
+      payloads = []
+      executor.subscribe('subscription { harvestAdded { id orchard_id quantity_kg } }') do |r|
+        payloads << r
+      end
+
+      mutation = 'mutation { addHarvest(orchard_id: "o1", variety_id: "v1", ' \
+                 'quantity_kg: 700, harvested_at: "2024-08-15") { id } }'
+      executor.execute(mutation)
+
+      expect(payloads.length).to eq 1
+      event = payloads.first[:data]['harvestAdded']
+      expect(event['orchard_id']).to eq 'o1'
+      expect(event['quantity_kg']).to eq 700
+    end
+
+    it 'delivers nested variety details when requested in the subscription' do
+      payloads = []
+      executor.subscribe('subscription { harvestAdded { id variety { name } } }') do |r|
+        payloads << r
+      end
+
+      mutation = 'mutation { addHarvest(orchard_id: "o1", variety_id: "v1", ' \
+                 'quantity_kg: 300, harvested_at: "2024-08-20") { id } }'
+      executor.execute(mutation)
+
+      expect(payloads.length).to eq 1
+      event = payloads.first[:data]['harvestAdded']
+      expect(event.dig('variety', 'name')).to eq 'Gravenstein'
+    end
+
+    it 'stops delivering after unsubscribing' do
+      payloads = []
+      ids = executor.subscribe('subscription { harvestAdded { id } }') { |r| payloads << r }
+      ids.each { |id| GenQL::SubscriptionBroker.unsubscribe(id) }
+
+      mutation = 'mutation { addHarvest(orchard_id: "o1", variety_id: "v1", ' \
+                 'quantity_kg: 100, harvested_at: "2024-08-01") { id } }'
+      executor.execute(mutation)
+
+      expect(payloads).to be_empty
+    end
+  end
 end

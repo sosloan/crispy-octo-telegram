@@ -4,6 +4,7 @@ source 'https://rubygems.org'
 
 ruby '~> 3.2'
 
+gem 'faye-websocket', '~> 0.12'
 gem 'json', '~> 2.7'
 gem 'puma', '~> 6.4'
 gem 'sinatra', '~> 3.2'
