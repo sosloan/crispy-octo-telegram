@@ -129,6 +129,11 @@ class SaratogaApp < Sinatra::Base
   # Introspection: describe the schema in plain JSON
   get '/schema' do
     types = {}
+    [Saratoga::QueryType, Saratoga::MutationType,
+     Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType,
+     Saratoga::OrchardsConnection, Saratoga::VarietiesConnection, Saratoga::HarvestsConnection,
+     Saratoga::VarietiesInOrchardConnection, Saratoga::HarvestsInOrchardConnection,
+     GenQL::PageInfoType].each do |type|
     schema_types = [Saratoga::QueryType, Saratoga::MutationType, Saratoga::SubscriptionType,
                     Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType]
     schema_types.each do |type|
