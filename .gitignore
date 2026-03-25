@@ -1,0 +1,12 @@
+.bundle/
+vendor/
+*.gem
+*.rbc
+.sass-cache
+coverage/
+InstalledFiles
+pkg/
+spec/reports/
+test/tmp/
+test/version_tmp/
+tmp/
