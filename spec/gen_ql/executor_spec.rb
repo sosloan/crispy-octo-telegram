@@ -105,4 +105,75 @@ RSpec.describe GenQL::Executor do
       expect(result[:data]['me']).to eq({ 'name' => 'Alice', 'age' => 31 })
     end
   end
+
+  describe 'cache integration' do
+    subject(:exec) { described_class.new(schema, cache: GenQL::Cache.new) }
+
+    it 'returns the correct result when cache is enabled' do
+      result = exec.execute('{ greeting }')
+      expect(result[:data]['greeting']).to eq 'Hello from Saratoga'
+    end
+
+    it 'serves subsequent identical queries from cache (resolver called once)' do
+      call_count = 0
+      counting_qt = GenQL::ObjectType.new('Query') do
+        field(:ping, GenQL::StringType) do |_p, _a, _c|
+          call_count += 1
+          'pong'
+        end
+      end
+      cached_exec = described_class.new(
+        GenQL::Schema.new(query: counting_qt),
+        cache: GenQL::Cache.new
+      )
+
+      cached_exec.execute('{ ping }')
+      cached_exec.execute('{ ping }')
+      expect(call_count).to eq 1
+    end
+
+    it 'does not cache mutations' do
+      call_count = 0
+      counting_mt = GenQL::ObjectType.new('Mutation') do
+        field(:echo, GenQL::StringType) do |_p, args, _c|
+          call_count += 1
+          args['value']
+        end
+      end
+      cached_exec = described_class.new(
+        GenQL::Schema.new(query: query_type, mutation: counting_mt),
+        cache: GenQL::Cache.new
+      )
+
+      cached_exec.execute('mutation { echo(value: "a") }')
+      cached_exec.execute('mutation { echo(value: "a") }')
+      expect(call_count).to eq 2
+    end
+
+    it 'treats different query strings as separate cache entries' do
+      result_a = exec.execute('{ greeting }')
+      result_b = exec.execute('{ people { name } }')
+      expect(result_a[:data]['greeting']).to eq 'Hello from Saratoga'
+      expect(result_b[:data]['people']).to be_an(Array)
+    end
+
+    it 'respects cache_ttl and re-executes after expiry' do
+      call_count = 0
+      counting_qt = GenQL::ObjectType.new('Query') do
+        field(:tick, GenQL::IntType) do |_p, _a, _c|
+          call_count += 1
+          call_count
+        end
+      end
+      cached_exec = described_class.new(
+        GenQL::Schema.new(query: counting_qt),
+        cache: GenQL::Cache.new
+      )
+
+      cached_exec.execute('{ tick }', cache_ttl: 0.01)
+      sleep 0.05
+      cached_exec.execute('{ tick }', cache_ttl: 0.01)
+      expect(call_count).to eq 2
+    end
+  end
 end
