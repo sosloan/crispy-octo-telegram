@@ -74,22 +74,25 @@ module Saratoga
       # Mutation helpers --------------------------------------------------
 
       def add_harvest(orchard_id:, variety_id:, quantity_kg:, harvested_at:, notes: nil)
+        @next_harvest_id ||= harvests.length + 1
         harvest = Harvest.new(
-          id: "h#{harvests.length + 1}",
+          id: "h#{@next_harvest_id}",
           orchard_id: orchard_id,
           variety_id: variety_id,
           quantity_kg: quantity_kg,
           harvested_at: harvested_at,
           notes: notes
         )
+        @next_harvest_id += 1
         harvests << harvest
         harvest
       end
 
       def reset!
-        @varieties = nil
-        @orchards  = nil
-        @harvests  = nil
+        @varieties       = nil
+        @orchards        = nil
+        @harvests        = nil
+        @next_harvest_id = nil
       end
     end
   end
