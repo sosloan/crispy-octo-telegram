@@ -181,3 +181,107 @@ Benchmark.bmbm(40) do |x|
     end
   end
 end
+
+# ---------------------------------------------------------------------------
+# Concurrent-user benchmark — 2,001 simultaneous users
+#
+# Spawns 2,001 threads that are held behind a barrier and released all at
+# once.  Each thread executes one read-only GenQL query and records its own
+# wall-clock latency.  After all threads finish, aggregate statistics are
+# printed: throughput (req/s) and latency percentiles (p50 / p95 / p99).
+#
+# Read-only queries are used deliberately so that the shared in-memory store
+# is never mutated during the run, removing the need for store-level locking.
+# ---------------------------------------------------------------------------
+
+CONCURRENT_USERS = 2_001
+
+CONCURRENT_QUERIES = [
+  QUERIES[:simple_scalar],
+  QUERIES[:list_with_scalars],
+  QUERIES[:nested_one_level],
+  QUERIES[:single_orchard],
+  QUERIES[:all_varieties],
+  QUERIES[:all_harvests],
+  QUERIES[:harvests_with_variety],
+  QUERIES[:deeply_nested]
+].freeze
+
+# Spawn +users+ threads.  Each thread waits on the barrier stored in +barrier_context+,
+# then executes one query and records its elapsed time.
+def build_concurrent_threads(users, queries, barrier_context) # rubocop:disable Metrics/AbcSize
+  barrier_mx = barrier_context[:barrier_mx]
+  barrier_cv = barrier_context[:barrier_cv]
+  ready      = barrier_context[:ready]
+  go         = barrier_context[:go]
+  latencies  = barrier_context[:latencies]
+  errors     = barrier_context[:errors]
+  err_mx     = barrier_context[:err_mx]
+  users.times.map do |i|
+    Thread.new do
+      barrier_mx.synchronize do
+        ready[0] += 1
+        barrier_cv.wait(barrier_mx) until go[0]
+      end
+      t0           = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+      result       = EXECUTOR.execute(queries[i % queries.length])
+      latencies[i] = Process.clock_gettime(Process::CLOCK_MONOTONIC) - t0
+      err_mx.synchronize { errors[0] += 1 } if result[:errors]
+    end
+  end
+end
+
+# Run the concurrent benchmark and return a stats hash.
+def run_concurrent_benchmark(users, queries)
+  barrier_context = {
+    barrier_mx: Mutex.new,
+    barrier_cv: ConditionVariable.new,
+    ready: [0],
+    go: [false],
+    latencies: Array.new(users),
+    errors: [0],
+    err_mx: Mutex.new
+  }
+  threads = build_concurrent_threads(users, queries, barrier_context)
+  sleep 0.001 until barrier_context[:barrier_mx].synchronize { barrier_context[:ready][0] == users }
+  wall_t = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+  barrier_context[:barrier_mx].synchronize do
+    barrier_context[:go][0] = true
+    barrier_context[:barrier_cv].broadcast
+  end
+  threads.each(&:join)
+  wall = Process.clock_gettime(Process::CLOCK_MONOTONIC) - wall_t
+  { samples: barrier_context[:latencies].compact, wall: wall, errors: barrier_context[:errors][0] }
+end
+
+# Print a human-readable summary of concurrent benchmark results.
+def print_concurrent_results(users, stats) # rubocop:disable Metrics/AbcSize
+  sorted = stats[:samples].sort
+  count  = sorted.length
+  wall   = stats[:wall]
+  mean   = stats[:samples].sum / count
+  ms     = ->(s) { (s * 1_000).round(3) }
+  pct    = ->(f) { sorted[(count * f).floor] }
+  rows = {
+    'Users:' => users.to_s,
+    'Wall time:' => "#{wall.round(3)} s",
+    'Throughput:' => "#{(users / wall).round(1)} req/s",
+    'Min latency:' => "#{ms[sorted.first]} ms",
+    'Mean latency:' => "#{ms[mean]} ms",
+    'p50 latency:' => "#{ms[pct[0.50]]} ms",
+    'p95 latency:' => "#{ms[pct[0.95]]} ms",
+    'p99 latency:' => "#{ms[pct[0.99]]} ms",
+    'Max latency:' => "#{ms[sorted.last]} ms",
+    'Errors:' => stats[:errors].to_s
+  }
+  rows.each { |label, value| puts "#{label.ljust(20)} #{value}" }
+end
+
+puts "\n#{'=' * 60}"
+puts "Concurrent-user benchmark  —  #{CONCURRENT_USERS} simultaneous users"
+puts '=' * 60
+
+concurrent_stats = run_concurrent_benchmark(CONCURRENT_USERS, CONCURRENT_QUERIES)
+print_concurrent_results(CONCURRENT_USERS, concurrent_stats)
+
+puts '=' * 60

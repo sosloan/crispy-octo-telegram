@@ -4,6 +4,14 @@ require 'spec_helper'
 require 'gen_ql'
 require 'saratoga'
 
+CONCURRENT_STRESS_QUERIES = [
+  '{ orchards { name } }',
+  '{ orchards { id name location established_year } }',
+  '{ orchards { name varieties { name season } } }',
+  '{ varieties { id name species season notes } }',
+  '{ harvests { id orchard_id variety_id quantity_kg harvested_at } }'
+].freeze
+
 RSpec.describe 'Stress tests' do
   before { Saratoga::Store.reset! }
 
@@ -214,6 +222,54 @@ RSpec.describe 'Stress tests' do
       end
       harvest = Saratoga::Store.harvests.last
       expect(harvest.variety.name).to eq 'Gravenstein'
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Concurrent-user stress — 2,001 simultaneous threads
+  # ---------------------------------------------------------------------------
+  describe '2,001 concurrent users' do
+    # Spawn +count+ threads, hold them at a barrier, release all at once, then
+    # join all threads.  The caller-supplied block receives the thread index.
+    def run_concurrent_barrier(count, &block)
+      barrier_mx = Mutex.new
+      barrier_cv = ConditionVariable.new
+      ready      = [0]
+      go         = [false]
+      threads = count.times.map do |i|
+        Thread.new do
+          barrier_mx.synchronize do
+            ready[0] += 1
+            barrier_cv.wait(barrier_mx) until go[0]
+          end
+          block.call(i)
+        end
+      end
+      sleep 0.001 until barrier_mx.synchronize { ready[0] == count }
+      barrier_mx.synchronize do
+        go[0] = true
+        barrier_cv.broadcast
+      end
+      threads.each(&:join)
+    end
+
+    it 'executes 2,001 simultaneous read queries without errors or data races' do
+      errors = []
+      err_mx = Mutex.new
+      run_concurrent_barrier(2_001) do |i|
+        result = executor.execute(CONCURRENT_STRESS_QUERIES[i % CONCURRENT_STRESS_QUERIES.length])
+        err_mx.synchronize { errors << result[:errors] } if result[:errors]
+      end
+      expect(errors).to be_empty
+    end
+
+    it 'returns consistent orchard data across 2,001 concurrent readers' do
+      results = Array.new(2_001)
+      run_concurrent_barrier(2_001) do |i|
+        results[i] = executor.execute('{ orchards { id name } }')
+      end
+      first = results.first[:data]['orchards']
+      expect(results.all? { |r| r[:data]['orchards'] == first }).to be true
     end
   end
 
