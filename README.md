@@ -67,10 +67,15 @@ The server starts on `http://localhost:9292`.
 #### Example queries
 
 ```sh
-# List all orchards with their varieties
+# List the first page of orchards with their varieties (infinite scroll)
 curl -s -XPOST http://localhost:9292/genql \
   -H 'Content-Type: application/json' \
-  -d '{"query":"{ orchards { name location varieties { name season } } }"}'
+  -d '{"query":"{ orchards(first: 2) { nodes { name location varieties { name season } } page_info { has_next_page end_cursor } } }"}'
+
+# Fetch the next page using the cursor returned above
+curl -s -XPOST http://localhost:9292/genql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ orchards(first: 2, after: \"o2\") { nodes { name } page_info { has_next_page end_cursor } } }"}'
 
 # Fetch a single orchard by id
 curl -s -XPOST http://localhost:9292/genql \
@@ -95,23 +100,59 @@ bundle exec rspec
 
 ### GenQL query syntax
 
+List fields (`orchards`, `varieties`, `harvests`) now return **connection types** that
+support cursor-based pagination for infinite scroll.  Every connection exposes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `nodes` | `[T]` | The items on this page |
+| `page_info.has_next_page` | `Boolean` | `true` when more items follow |
+| `page_info.end_cursor` | `String` | Pass as `after` to fetch the next page |
+| `page_info.start_cursor` | `String` | Cursor of the first item on this page |
+
+Arguments accepted by every list field:
+
+| Argument | Type | Description |
+|----------|------|-------------|
+| `first` | `Int` | Maximum number of items to return |
+| `after` | `ID` | Return items after this cursor (the previous page's `end_cursor`) |
+
 ```
-# Read query (bare braces default to "query")
+# Read query — all orchards, no pagination (bare braces default to "query")
 {
   orchards {
-    name
-    location
-    established_year
-    varieties {
+    nodes {
       name
-      season
+      location
+      established_year
+      varieties {
+        name
+        season
+      }
+      harvests {
+        id
+        quantity_kg
+        harvested_at
+        variety { name }
+      }
     }
-    harvests {
-      id
-      quantity_kg
-      harvested_at
-      variety { name }
-    }
+    page_info { has_next_page end_cursor }
+  }
+}
+
+# Paginated list — first page of 2 orchards
+{
+  orchards(first: 2) {
+    nodes { id name location }
+    page_info { has_next_page end_cursor }
+  }
+}
+
+# Next page — use end_cursor from the previous response
+{
+  orchards(first: 2, after: "o2") {
+    nodes { id name location }
+    page_info { has_next_page end_cursor }
   }
 }
 

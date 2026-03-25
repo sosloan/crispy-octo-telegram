@@ -61,8 +61,10 @@ class SaratogaApp < Sinatra::Base
   get '/schema' do
     types = {}
     [Saratoga::QueryType, Saratoga::MutationType,
-     Saratoga::OrchardType, Saratoga::VarietyType,
-     Saratoga::HarvestType].each do |type|
+     Saratoga::OrchardType, Saratoga::OrchardConnection,
+     Saratoga::VarietyType, Saratoga::VarietyConnection,
+     Saratoga::HarvestType, Saratoga::HarvestConnection,
+     GenQL::PageInfoType].each do |type|
       types[type.name] = {
         description: type.description,
         fields: type.fields.transform_values do |f|
