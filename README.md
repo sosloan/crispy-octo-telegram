@@ -93,6 +93,25 @@ curl -s -XPOST http://localhost:9292/genql \
 
 ---
 
+### Offline support (data persistence)
+
+The server operates entirely without an external database.  All static
+reference data (orchards, apple varieties) is embedded as seed data.  Harvests
+recorded via the `addHarvest` mutation are saved to a local JSON file so they
+survive server restarts.
+
+By default the file is written to `data/store.json` in the project root.
+Override the path with the `SARATOGA_DATA_FILE` environment variable:
+
+```sh
+SARATOGA_DATA_FILE=/var/data/saratoga.json bundle exec rackup
+```
+
+When no file exists the server falls back to the built-in seed harvests,
+so the service starts cleanly even on a brand-new deployment.
+
+---
+
 ### Running the tests
 
 ```sh

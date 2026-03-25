@@ -4,6 +4,7 @@ require_relative 'ast'
 require_relative 'lexer'
 require_relative 'parser'
 require_relative 'type'
+require_relative 'subscription_broker'
 
 module GenQL
   # Executes a GenQL query string against a Schema and returns a Hash with
@@ -37,6 +38,47 @@ module GenQL
       response
     end
 
+    # Registers subscriptions described in +query_string+ with the
+    # +SubscriptionBroker+.  For each subscription field in the document the
+    # supplied block is called with a +{ data: {...} }+ payload whenever the
+    # field's event is published.
+    #
+    # @param query_string [String]  GenQL subscription document
+    # @param context      [Hash]    caller-supplied context forwarded to resolvers
+    # @yieldparam payload [Hash]    { data: { field_name => resolved_value } }
+    # @return [Array<String>]  opaque subscription IDs (pass to +SubscriptionBroker.unsubscribe+)
+    def subscribe(query_string, context: {}, &callback)
+      tokens   = Lexer.new(query_string).tokenize
+      document = Parser.new(tokens).parse
+
+      subscription_ids = []
+      document.operations.each do |operation|
+        next unless operation.type.to_s == 'subscription'
+
+        root_type = @schema.subscription_type
+        raise ExecutionError, 'No subscription type defined in schema' unless root_type
+
+        operation.selections.each do |ast_field|
+          field_def = root_type.fields[ast_field.name]
+          raise ExecutionError, "Field '#{ast_field.name}' not found on subscription type" unless field_def
+
+          captured_field_name = ast_field.name
+          captured_selections = ast_field.selections
+
+          id = SubscriptionBroker.subscribe(captured_field_name) do |event_data|
+            result = if captured_selections.any?
+                       resolve_nested(event_data, ast_field, field_def, context)
+                     else
+                       event_data
+                     end
+            callback.call({ data: { captured_field_name => result } })
+          end
+          subscription_ids << id
+        end
+      end
+      subscription_ids
+    end
+
     private
 
     def execute_document(document, context)
@@ -60,8 +102,9 @@ module GenQL
 
     def root_type_for(op_type)
       case op_type
-      when :query, 'query'        then @schema.query_type
-      when :mutation, 'mutation'  then @schema.mutation_type
+      when :query, 'query'             then @schema.query_type
+      when :mutation, 'mutation'       then @schema.mutation_type
+      when :subscription, 'subscription' then @schema.subscription_type
       end
     end
 

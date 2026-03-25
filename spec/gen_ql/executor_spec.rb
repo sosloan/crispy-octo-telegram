@@ -36,6 +36,60 @@ RSpec.describe GenQL::Executor do
   let(:schema)   { GenQL::Schema.new(query: query_type, mutation: mutation_type) }
   subject(:exec) { described_class.new(schema) }
 
+  describe '#subscribe' do
+    let(:subscription_type) do
+      outer_person_type = person_type
+      GenQL::ObjectType.new('Subscription') do
+        field(:personAdded, outer_person_type, description: 'Fires when a person is added')
+      end
+    end
+
+    let(:schema_with_sub) do
+      GenQL::Schema.new(query: query_type, mutation: mutation_type, subscription: subscription_type)
+    end
+    subject(:exec_with_sub) { described_class.new(schema_with_sub) }
+
+    before { GenQL::SubscriptionBroker.reset! }
+    after  { GenQL::SubscriptionBroker.reset! }
+
+    it 'returns an array of subscription IDs' do
+      ids = exec_with_sub.subscribe('subscription { personAdded { name } }') { |_r| }
+      expect(ids).to be_an(Array)
+      expect(ids.length).to eq 1
+    end
+
+    it 'delivers resolved payloads when the event is published' do
+      payloads = []
+      exec_with_sub.subscribe('subscription { personAdded { name age } }') { |r| payloads << r }
+
+      GenQL::SubscriptionBroker.publish('personAdded', { 'name' => 'Carol', 'age' => 28 })
+
+      expect(payloads.length).to eq 1
+      expect(payloads.first[:data]['personAdded']).to eq({ 'name' => 'Carol', 'age' => 28 })
+    end
+
+    it 'stops delivering after unsubscribing' do
+      payloads = []
+      ids = exec_with_sub.subscribe('subscription { personAdded { name } }') { |r| payloads << r }
+      ids.each { |id| GenQL::SubscriptionBroker.unsubscribe(id) }
+
+      GenQL::SubscriptionBroker.publish('personAdded', { 'name' => 'Dave', 'age' => 40 })
+      expect(payloads).to be_empty
+    end
+
+    it 'raises ExecutionError when no subscription type is defined in the schema' do
+      expect do
+        exec.subscribe('subscription { personAdded { name } }') { |_r| }
+      end.to raise_error(GenQL::ExecutionError, /No subscription type/)
+    end
+
+    it 'raises ExecutionError for unknown subscription fields' do
+      expect do
+        exec_with_sub.subscribe('subscription { unknownField { name } }') { |_r| }
+      end.to raise_error(GenQL::ExecutionError, /unknownField/)
+    end
+  end
+
   describe '#execute' do
     it 'resolves a simple scalar field' do
       result = exec.execute('{ greeting }')
