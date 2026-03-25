@@ -4,6 +4,7 @@ require_relative 'ast'
 require_relative 'lexer'
 require_relative 'parser'
 require_relative 'type'
+require_relative 'request_deduplicator'
 require_relative 'subscription_broker'
 
 module GenQL
@@ -18,6 +19,13 @@ module GenQL
   #   • Recurse into sub-selections when the resolved value is an object or an
   #     array of objects.
   #   • Collect field-level errors without aborting the whole execution.
+  #   • Deduplicate identical concurrent query requests so that only one
+  #     execution runs; all other callers with the same query receive the
+  #     shared result.  Mutation operations bypass deduplication.
+  class Executor
+    def initialize(schema)
+      @schema       = schema
+      @deduplicator = RequestDeduplicator.new
   #   • Optionally cache the results of read-only (non-mutation) operations
   #     using a +GenQL::Cache+ instance supplied at construction time.
   class Executor
@@ -35,6 +43,35 @@ module GenQL
     # @param cache_ttl    [Numeric, nil]  per-call TTL override (seconds);
     #   passed through to the cache only when caching is enabled.
     # @return [Hash]  { data: Hash, errors: Array } (errors key omitted when empty)
+    def execute(query_string, variables: {}, context: {}) # rubocop:disable Lint/UnusedMethodArgument
+      if mutation?(query_string)
+        execute_fresh(query_string, context)
+      else
+        @deduplicator.execute(cache_key(query_string, context)) { execute_fresh(query_string, context) }
+      end
+    end
+
+    private
+
+    # Returns true when +query_string+ begins with the "mutation" keyword,
+    # indicating that the operation has side-effects and must not be
+    # deduplicated.  Matching is case-insensitive to handle any client
+    # capitalisation, although the GenQL lexer normalises keywords to
+    # lower-case in practice.
+    def mutation?(query_string)
+      query_string.lstrip.downcase.start_with?('mutation')
+    end
+
+    # Build the cache key used to identify a unique request.
+    # Ruby Array#hash (and Hash#hash) is content-based in MRI 3.x, so two
+    # arrays with equal elements always produce the same key, making this
+    # safe to use as a Hash lookup key within a single process.
+    def cache_key(query_string, context)
+      [query_string, context]
+    end
+
+    # Execute a query string unconditionally (no deduplication).
+    def execute_fresh(query_string, context)
     def execute(query_string, variables: {}, context: {}, cache_ttl: nil) # rubocop:disable Lint/UnusedMethodArgument
       tokens   = Lexer.new(query_string).tokenize
       document = Parser.new(tokens).parse
