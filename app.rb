@@ -14,12 +14,16 @@ require 'saratoga'
 #
 # Exposes a single endpoint:
 #   POST /genql   Content-Type: application/json
-#                 Body: { "query": "...", "context": {...} }
+#                 Body (single):  { "query": "...", "context": {...} }
+#                 Body (batch):   [ { "query": "...", "context": {...} }, ... ]
 #
-# Returns:
+# Returns (single):
 #   200  { "data": {...} }
 #   200  { "data": {...}, "errors": [...] }   (partial success)
 #   400  { "errors": [{ "message": "..." }] } (parse / request errors)
+#
+# Returns (batch):
+#   200  [ { "data": {...} }, { "data": {...}, "errors": [...] }, ... ]
 # ---------------------------------------------------------------------------
 class SaratogaApp < Sinatra::Base
   EXECUTOR = GenQL::Executor.new(Saratoga::SCHEMA)
@@ -41,20 +45,37 @@ class SaratogaApp < Sinatra::Base
     body_str = request.body.read
     payload  = JSON.parse(body_str)
 
-    halt 400, json(errors: [{ message: 'Missing required field: query' }]) unless payload.key?('query')
+    if payload.is_a?(Array)
+      results = payload.map { |item| execute_query_item(item) }
+      json results
+    else
+      halt 400, json(errors: [{ message: 'Missing required field: query' }]) unless payload.key?('query')
 
-    result = EXECUTOR.execute(
-      payload['query'],
-      context: payload.fetch('context', {})
-    )
+      result = EXECUTOR.execute(
+        payload['query'],
+        context: payload.fetch('context', {})
+      )
 
-    json result
+      json result
+    end
   rescue JSON::ParserError => e
     halt 400, json(errors: [{ message: "Invalid JSON: #{e.message}" }])
   rescue GenQL::LexError, GenQL::ParseError => e
     halt 400, json(errors: [{ message: e.message }])
   rescue StandardError => e
     halt 500, json(errors: [{ message: "Internal server error: #{e.message}" }])
+  end
+
+  private
+
+  def execute_query_item(item)
+    return { errors: [{ message: 'Missing required field: query' }] } unless item.key?('query')
+
+    EXECUTOR.execute(item['query'], context: item.fetch('context', {}))
+  rescue GenQL::LexError, GenQL::ParseError => e
+    { errors: [{ message: e.message }] }
+  rescue StandardError => e
+    { errors: [{ message: "Internal server error: #{e.message}" }] }
   end
 
   # Introspection: describe the schema in plain JSON
