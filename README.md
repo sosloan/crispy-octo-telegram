@@ -38,7 +38,8 @@ lib/
     type.rb               # Type system (ObjectType, FieldDefinition, scalars, Schema)
     executor.rb           # Query executor
   saratoga/
-    store.rb              # In-memory data store + seed data
+    database.rb           # SQLite connection, schema migrations, and seed data
+    store.rb              # SQLite-backed repository (Variety, Orchard, Harvest)
     schema.rb             # Saratoga-specific GenQL schema (types + resolvers)
 app.rb                    # Sinatra HTTP application
 config.ru                 # Rack entry point
@@ -55,6 +56,13 @@ bundle exec rackup
 ```
 
 The server starts on `http://localhost:9292`.
+
+By default the server stores data in `saratoga.db` in the working directory.
+Set the `SARATOGA_DATABASE_PATH` environment variable to use a different path:
+
+```sh
+SARATOGA_DATABASE_PATH=/var/data/saratoga.db bundle exec rackup
+```
 
 #### Endpoints
 
