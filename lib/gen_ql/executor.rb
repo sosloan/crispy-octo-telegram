@@ -4,6 +4,7 @@ require_relative 'ast'
 require_relative 'lexer'
 require_relative 'parser'
 require_relative 'type'
+require_relative 'request_deduplicator'
 
 module GenQL
   # Executes a GenQL query string against a Schema and returns a Hash with
@@ -17,9 +18,13 @@ module GenQL
   #   • Recurse into sub-selections when the resolved value is an object or an
   #     array of objects.
   #   • Collect field-level errors without aborting the whole execution.
+  #   • Deduplicate identical concurrent query requests so that only one
+  #     execution runs; all other callers with the same query receive the
+  #     shared result.  Mutation operations bypass deduplication.
   class Executor
     def initialize(schema)
-      @schema = schema
+      @schema       = schema
+      @deduplicator = RequestDeduplicator.new
     end
 
     # @param query_string [String]  GenQL document
@@ -27,6 +32,24 @@ module GenQL
     # @param context      [Hash]    caller-supplied context forwarded to resolvers
     # @return [Hash]  { data: Hash, errors: Array } (errors key omitted when empty)
     def execute(query_string, variables: {}, context: {}) # rubocop:disable Lint/UnusedMethodArgument
+      if mutation?(query_string)
+        execute_fresh(query_string, context)
+      else
+        @deduplicator.execute([query_string, context]) { execute_fresh(query_string, context) }
+      end
+    end
+
+    private
+
+    # Returns true when +query_string+ begins with the "mutation" keyword,
+    # indicating that the operation has side-effects and must not be
+    # deduplicated.
+    def mutation?(query_string)
+      query_string.lstrip.start_with?('mutation')
+    end
+
+    # Execute a query string unconditionally (no deduplication).
+    def execute_fresh(query_string, context)
       tokens   = Lexer.new(query_string).tokenize
       document = Parser.new(tokens).parse
 
@@ -36,8 +59,6 @@ module GenQL
       response[:errors] = errors unless errors.empty?
       response
     end
-
-    private
 
     def execute_document(document, context)
       data   = {}
