@@ -134,4 +134,19 @@ RSpec.describe GenQL::Cache do
       expect(cache.evict_expired).to eq 0
     end
   end
+
+  describe 'thread safety' do
+    it 'handles concurrent writes without data loss' do
+      10.times.map { |i|
+        Thread.new { cache.write("key#{i}", i) }
+      }.each(&:join)
+      expect(cache.size).to eq 10
+    end
+
+    it 'handles concurrent reads safely' do
+      cache.write('shared', 'value')
+      results = 10.times.map { Thread.new { cache.read('shared') } }.map(&:value)
+      expect(results).to all(eq('value'))
+    end
+  end
 end

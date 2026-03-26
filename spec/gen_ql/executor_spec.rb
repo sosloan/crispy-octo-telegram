@@ -230,4 +230,38 @@ RSpec.describe GenQL::Executor do
       expect(call_count).to eq 2
     end
   end
+
+  describe 'context forwarding' do
+    it 'passes context to the resolver' do
+      received_ctx = nil
+      qt = GenQL::ObjectType.new('Query') do
+        field(:whoami, GenQL::StringType) { |_p, _a, ctx| received_ctx = ctx; ctx[:user] }
+      end
+      s = GenQL::Schema.new(query: qt)
+      described_class.new(s).execute('{ whoami }', context: { user: 'alice' })
+      expect(received_ctx[:user]).to eq 'alice'
+    end
+
+    it 'defaults context to an empty hash when omitted' do
+      received_ctx = nil
+      qt = GenQL::ObjectType.new('Query') do
+        field(:ctx_check, GenQL::StringType) { |_p, _a, ctx| received_ctx = ctx; 'ok' }
+      end
+      s = GenQL::Schema.new(query: qt)
+      described_class.new(s).execute('{ ctx_check }')
+      expect(received_ctx).to eq({})
+    end
+  end
+
+  describe 'nil resolver return value' do
+    it 'returns nil for a nullable scalar field' do
+      qt = GenQL::ObjectType.new('Query') do
+        field(:maybe, GenQL::StringType) { |_p, _a, _c| nil }
+      end
+      s = GenQL::Schema.new(query: qt)
+      result = described_class.new(s).execute('{ maybe }')
+      expect(result[:data]['maybe']).to be_nil
+      expect(result).not_to have_key(:errors)
+    end
+  end
 end
