@@ -29,8 +29,16 @@ Layout/LineLength:
 
 Naming/MethodParameterName:
   AllowedNames:
+    - db
     - e
     - k
     - v
     - f
 
+Metrics/ModuleLength:
+  Exclude:
+    - "lib/saratoga/database.rb"
+
+Metrics/ClassLength:
+  Exclude:
+    - "lib/saratoga/database.rb"

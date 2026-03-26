@@ -87,4 +87,74 @@ RSpec.describe SaratogaApp do
       expect(orchards.first['varieties']).to be_an(Array)
     end
   end
+
+  describe 'POST /genql (batch)' do
+    def post_batch(queries)
+      post '/genql',
+           JSON.generate(queries),
+           'CONTENT_TYPE' => 'application/json'
+    end
+
+    it 'returns an array of results for a batch request' do
+      post_batch([
+                   { 'query' => '{ orchards { name } }' },
+                   { 'query' => '{ varieties { name } }' }
+                 ])
+      expect(last_response.status).to eq 200
+      body = JSON.parse(last_response.body)
+      expect(body).to be_an(Array)
+      expect(body.length).to eq 2
+      expect(body[0]['data']['orchards']).to be_an(Array)
+      expect(body[1]['data']['varieties']).to be_an(Array)
+    end
+
+    it 'processes each query independently in a batch' do
+      post_batch([
+                   { 'query' => '{ orchards { name } }' },
+                   { 'query' => '{ varieties { name season } }' }
+                 ])
+      body = JSON.parse(last_response.body)
+      expect(body[0]['data']).to have_key('orchards')
+      expect(body[1]['data']).to have_key('varieties')
+    end
+
+    it 'returns an error entry for an invalid query in a batch without aborting others' do
+      post_batch([
+                   { 'query' => '{ orchards { name } }' },
+                   { 'query' => '{ @invalid }' },
+                   { 'query' => '{ varieties { name } }' }
+                 ])
+      expect(last_response.status).to eq 200
+      body = JSON.parse(last_response.body)
+      expect(body).to be_an(Array)
+      expect(body.length).to eq 3
+      expect(body[0]['data']['orchards']).to be_an(Array)
+      expect(body[1]['errors']).not_to be_nil
+      expect(body[2]['data']['varieties']).to be_an(Array)
+    end
+
+    it 'returns an error entry when query key is missing in a batch item' do
+      post_batch([
+                   { 'query' => '{ orchards { name } }' },
+                   { 'context' => {} }
+                 ])
+      expect(last_response.status).to eq 200
+      body = JSON.parse(last_response.body)
+      expect(body[1]['errors'].first['message']).to match(/query/)
+    end
+
+    it 'returns an empty array for an empty batch' do
+      post_batch([])
+      expect(last_response.status).to eq 200
+      body = JSON.parse(last_response.body)
+      expect(body).to eq []
+    end
+
+    it 'supports context per batch item' do
+      post_batch([{ 'query' => '{ orchards { name } }', 'context' => { 'user' => 'admin' } }])
+      expect(last_response.status).to eq 200
+      body = JSON.parse(last_response.body)
+      expect(body[0]['data']['orchards']).to be_an(Array)
+    end
+  end
 end

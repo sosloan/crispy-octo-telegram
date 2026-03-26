@@ -86,19 +86,51 @@ module GenQL
     field :start_cursor,  StringType,  description: 'Cursor of the first item on this page'
     field :end_cursor,    StringType,  description: 'Cursor of the last item on this page; ' \
                                                     'pass as `after` to fetch the next page'
+  # Pagination types
+  # ---------------------------------------------------------------------------
+
+  # ObjectType that describes the metadata returned alongside a paginated list.
+  # Fields are resolved directly from a +GenQL::PageResult+ instance.
+  PageInfoType = ObjectType.new('PageInfo', description: 'Pagination metadata for a connection') do
+    field :total_count,       IntType,     description: 'Total number of items in the unpaginated collection'
+    field :has_next_page,     BooleanType, description: 'Whether more items follow the current page'
+    field :has_previous_page, BooleanType, description: 'Whether items precede the current page'
+  end
+
+  # Factory that produces a named connection ObjectType wrapping *node_type*.
+  #
+  # The returned type exposes two fields:
+  #   nodes     – the paginated array of *node_type* objects
+  #   page_info – a +PageInfoType+ object with total_count and page flags
+  #
+  # Both fields resolve from a +GenQL::PageResult+ value returned by the
+  # resolver of the corresponding list field.
+  #
+  # Usage:
+  #   OrchardsConnection = GenQL.connection_type('OrchardsConnection', OrchardType)
+  def self.connection_type(name, node_type, description: nil)
+    ObjectType.new(name, description: description) do
+      field :nodes,     node_type,    description: 'Paginated list of items' do |result, _args, _ctx|
+        result.nodes
+      end
+      field :page_info, PageInfoType, description: 'Pagination metadata' do |result, _args, _ctx|
+        result
+      end
+    end
   end
 
   # ---------------------------------------------------------------------------
   # Schema
   # ---------------------------------------------------------------------------
 
-  # Ties together the root query and mutation types.
+  # Ties together the root query, mutation, and subscription types.
   class Schema
-    attr_reader :query_type, :mutation_type
+    attr_reader :query_type, :mutation_type, :subscription_type
 
-    def initialize(query:, mutation: nil)
-      @query_type    = query
-      @mutation_type = mutation
+    def initialize(query:, mutation: nil, subscription: nil)
+      @query_type        = query
+      @mutation_type     = mutation
+      @subscription_type = subscription
     end
   end
 end
