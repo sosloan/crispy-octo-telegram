@@ -8,6 +8,7 @@ CONCURRENT_STRESS_QUERIES = [
   '{ orchards { nodes { name } } }',
   '{ orchards { nodes { id name location established_year } } }',
   '{ orchards { nodes { name varieties { nodes { name season } } } } }',
+  '{ orchards { nodes { name varieties { name season } } } }',
   '{ varieties { nodes { id name species season notes } } }',
   '{ harvests { nodes { id orchard_id variety_id quantity_kg harvested_at } } }'
 ].freeze
@@ -125,6 +126,8 @@ RSpec.describe 'Stress tests' do
               id name location established_year
               varieties { nodes { id name species season notes } }
               harvests  { nodes { id quantity_kg harvested_at } }
+              varieties { id name species season notes }
+              harvests  { id quantity_kg harvested_at }
             }
           }
           varieties { nodes { id name species season notes } }
@@ -152,6 +155,12 @@ RSpec.describe 'Stress tests' do
 
     it 'accumulates no errors across 200 successful read queries' do
       query = '{ orchards { nodes { name location varieties { nodes { name } } harvests { nodes { id } } } } }'
+      result = executor.execute('{ harvests { nodes { id } } }')
+      expect(result[:data]['harvests']['nodes'].length).to eq(4 + 200)
+    end
+
+    it 'accumulates no errors across 200 successful read queries' do
+      query = '{ orchards { nodes { name location varieties { name } harvests { id quantity_kg } } } }'
       errors_seen = []
       200.times do
         result = executor.execute(query)
@@ -303,6 +312,7 @@ RSpec.describe 'Stress tests' do
       result = executor.execute(
         '{ orchards { nodes { id name varieties { nodes { name } } harvests { nodes { id quantity_kg } } } } }'
       )
+      result   = executor.execute('{ orchards { nodes { id name varieties { name } harvests { id quantity_kg } } } }')
       orchards = result[:data]['orchards']['nodes']
       expect(orchards.length).to eq 3
       expect(orchards.all? { |o| o['harvests']['nodes'].is_a?(Array) }).to be true

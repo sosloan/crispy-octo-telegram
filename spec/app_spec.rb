@@ -27,7 +27,10 @@ RSpec.describe SaratogaApp do
       get '/schema'
       expect(last_response.status).to eq 200
       body = JSON.parse(last_response.body)
-      expect(body['schema']).to include('Orchard', 'Variety', 'Harvest')
+      expect(body['schema']).to include('Orchard', 'OrchardConnection',
+                                        'Variety', 'VarietyConnection',
+                                        'Harvest', 'HarvestConnection',
+                                        'PageInfo')
     end
   end
 
@@ -39,6 +42,7 @@ RSpec.describe SaratogaApp do
     end
 
     it 'returns 200 with connection data for a valid query' do
+    it 'returns 200 with data for a valid query' do
       post_genql('{ orchards { nodes { name } } }')
       expect(last_response.status).to eq 200
       body = JSON.parse(last_response.body)
@@ -82,6 +86,11 @@ RSpec.describe SaratogaApp do
       expect(last_response.status).to eq 200
       orchards = JSON.parse(last_response.body)['data']['orchards']['nodes']
       expect(orchards.first['varieties']['nodes']).to be_an(Array)
+    it 'returns nested orchard data' do
+      post_genql('{ orchards { nodes { name varieties { name } } } }')
+      expect(last_response.status).to eq 200
+      orchards = JSON.parse(last_response.body)['data']['orchards']['nodes']
+      expect(orchards.first['varieties']).to be_an(Array)
     end
   end
 

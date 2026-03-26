@@ -10,6 +10,7 @@ RSpec.describe 'Saratoga schema' do
   let(:executor) { GenQL::Executor.new(Saratoga::SCHEMA) }
 
   describe 'query orchards' do
+    it 'returns all orchards with basic fields' do
     it 'returns all orchards with basic fields via connection' do
       result = executor.execute('{ orchards { nodes { id name location established_year } } }')
       orchards = result[:data]['orchards']['nodes']
@@ -18,6 +19,16 @@ RSpec.describe 'Saratoga schema' do
       expect(orchards.map { |o| o['name'] }).to include('Saratoga Hill Block', 'Summit Ridge')
     end
 
+    it 'returns varieties nested inside an orchard' do
+      result = executor.execute('{ orchards { nodes { name varieties { name season } } } }')
+      hill   = result[:data]['orchards']['nodes'].find { |o| o['name'] == 'Saratoga Hill Block' }
+      expect(hill['varieties'].map { |v| v['name'] }).to include('Gravenstein', 'Pippin')
+    end
+
+    it 'returns harvests nested inside an orchard' do
+      result = executor.execute('{ orchards { nodes { id harvests { id quantity_kg } } } }')
+      hill   = result[:data]['orchards']['nodes'].find { |o| o['id'] == 'o1' }
+      expect(hill['harvests']).not_to be_empty
     it 'returns varieties nested inside an orchard via connection' do
       result = executor.execute('{ orchards { nodes { name varieties { nodes { name season } } } } }')
       hill   = result[:data]['orchards']['nodes'].find { |o| o['name'] == 'Saratoga Hill Block' }
@@ -37,6 +48,71 @@ RSpec.describe 'Saratoga schema' do
       expect(page_info['has_next_page']).to be false
       expect(page_info['has_previous_page']).to be false
     end
+
+    it 'returns page_info with has_next_page false when all items fit on one page' do
+      result    = executor.execute('{ orchards { page_info { has_next_page end_cursor } } }')
+      page_info = result[:data]['orchards']['page_info']
+      expect(page_info['has_next_page']).to be false
+      expect(page_info['end_cursor']).to eq 'o3'
+    end
+
+    describe 'pagination' do
+      it 'respects the first argument and sets has_next_page true when items remain' do
+        result    = executor.execute('{ orchards(first: 2) { nodes { id } page_info { has_next_page end_cursor } } }')
+        nodes     = result[:data]['orchards']['nodes']
+        page_info = result[:data]['orchards']['page_info']
+        expect(nodes.map { |o| o['id'] }).to eq %w[o1 o2]
+        expect(page_info['has_next_page']).to be true
+        expect(page_info['end_cursor']).to    eq 'o2'
+      end
+
+      it 'fetches the next page using the after cursor' do
+        result    = executor.execute('{ orchards(first: 2, after: "o2") { nodes { id } page_info { has_next_page } } }')
+        nodes     = result[:data]['orchards']['nodes']
+        page_info = result[:data]['orchards']['page_info']
+        expect(nodes.map { |o| o['id'] }).to eq %w[o3]
+        expect(page_info['has_next_page']).to be false
+      end
+
+      it 'returns an empty nodes array and nil cursors when after points to the last item' do
+        result    = executor.execute('{ orchards(first: 2, after: "o3") { nodes { id } page_info { end_cursor } } }')
+        nodes     = result[:data]['orchards']['nodes']
+        page_info = result[:data]['orchards']['page_info']
+        expect(nodes).to be_empty
+        expect(page_info['end_cursor']).to be_nil
+      end
+
+      it 'returns an empty page for an unknown or stale cursor' do
+        query     = '{ orchards(first: 2, after: "invalid-cursor") ' \
+                    '{ nodes { id } page_info { has_next_page end_cursor } } }'
+        result    = executor.execute(query)
+        nodes     = result[:data]['orchards']['nodes']
+        page_info = result[:data]['orchards']['page_info']
+        expect(nodes).to be_empty
+        expect(page_info['has_next_page']).to be false
+        expect(page_info['end_cursor']).to be_nil
+      end
+
+      it 'supports paginating through all orchards one at a time' do
+        ids    = []
+        cursor = nil
+        loop do
+          q = if cursor
+                "{ orchards(first: 1, after: \"#{cursor}\") " \
+                  '{ nodes { id } page_info { has_next_page end_cursor } } }'
+              else
+                '{ orchards(first: 1) { nodes { id } page_info { has_next_page end_cursor } } }'
+              end
+          result = executor.execute(q)
+          conn   = result[:data]['orchards']
+          ids   += conn['nodes'].map { |o| o['id'] }
+          break unless conn['page_info']['has_next_page']
+
+          cursor = conn['page_info']['end_cursor']
+        end
+        expect(ids).to eq %w[o1 o2 o3]
+      end
+    end
   end
 
   describe 'query orchard by id' do
@@ -53,6 +129,9 @@ RSpec.describe 'Saratoga schema' do
   end
 
   describe 'query varieties' do
+    it 'returns all varieties' do
+      result = executor.execute('{ varieties { nodes { id name species } } }')
+      expect(result[:data]['varieties']['nodes'].length).to eq 5
     it 'returns all varieties via connection' do
       result = executor.execute('{ varieties { nodes { id name species } } }')
       expect(result[:data]['varieties']['nodes'].length).to eq 5
@@ -69,18 +148,56 @@ RSpec.describe 'Saratoga schema' do
       expect(variety['name']).to eq 'Gravenstein'
       expect(variety['season']).to eq 'early'
     end
+
+    describe 'pagination' do
+      it 'paginates varieties with first and after' do
+        result    = executor.execute('{ varieties(first: 2) { nodes { id } page_info { has_next_page end_cursor } } }')
+        nodes     = result[:data]['varieties']['nodes']
+        page_info = result[:data]['varieties']['page_info']
+        expect(nodes.map { |v| v['id'] }).to eq %w[v1 v2]
+        expect(page_info['has_next_page']).to be true
+        expect(page_info['end_cursor']).to    eq 'v2'
+      end
+
+      it 'returns the next page of varieties' do
+        result = executor.execute('{ varieties(first: 3, after: "v2") { nodes { id } page_info { has_next_page } } }')
+        nodes  = result[:data]['varieties']['nodes']
+        expect(nodes.map { |v| v['id'] }).to eq %w[v3 v4 v5]
+        expect(result[:data]['varieties']['page_info']['has_next_page']).to be false
+      end
+    end
   end
 
   describe 'query harvests' do
+    it 'returns all recorded harvests' do
     it 'returns all recorded harvests via connection' do
       result = executor.execute('{ harvests { nodes { id orchard_id variety_id quantity_kg harvested_at } } }')
       expect(result[:data]['harvests']['nodes'].length).to eq 4
     end
 
     it 'returns variety details nested inside a harvest' do
+      result = executor.execute('{ harvests { nodes { variety { name } } } }')
+      names  = result[:data]['harvests']['nodes'].filter_map { |h| h.dig('variety', 'name') }
       result   = executor.execute('{ harvests { nodes { variety { name } } } }')
       names    = result[:data]['harvests']['nodes'].filter_map { |h| h.dig('variety', 'name') }
       expect(names).to include('Gravenstein', 'Pippin')
+    end
+
+    describe 'pagination' do
+      it 'paginates harvests with first argument' do
+        result    = executor.execute('{ harvests(first: 2) { nodes { id } page_info { has_next_page end_cursor } } }')
+        nodes     = result[:data]['harvests']['nodes']
+        page_info = result[:data]['harvests']['page_info']
+        expect(nodes.length).to eq 2
+        expect(page_info['has_next_page']).to be true
+      end
+
+      it 'returns remaining harvests after cursor' do
+        result = executor.execute('{ harvests(first: 10, after: "h2") { nodes { id } page_info { has_next_page } } }')
+        nodes  = result[:data]['harvests']['nodes']
+        expect(nodes.map { |h| h['id'] }).to eq %w[h3 h4]
+        expect(result[:data]['harvests']['page_info']['has_next_page']).to be false
+      end
     end
   end
 
@@ -204,6 +321,8 @@ RSpec.describe 'Saratoga schema' do
       mutation = 'mutation { addHarvest(orchard_id: "o1", variety_id: "v3", ' \
                  'quantity_kg: 100, harvested_at: "2024-10-01") { id } }'
       executor.execute(mutation)
+      result = executor.execute('{ harvests { nodes { id } } }')
+      expect(result[:data]['harvests']['nodes'].length).to eq 5
       result = executor.execute('{ harvests { nodes { id } page_info { total_count } } }')
       expect(result[:data]['harvests']['nodes'].length).to eq 5
       expect(result[:data]['harvests']['page_info']['total_count']).to eq 5

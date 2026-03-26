@@ -76,6 +76,16 @@ module GenQL
   end
 
   # ---------------------------------------------------------------------------
+  # Built-in connection support types
+  # ---------------------------------------------------------------------------
+
+  # Describes the pagination state for a connection field.
+  # Returned as the +page_info+ sub-field on every *Connection type.
+  PageInfoType = ObjectType.new('PageInfo', description: 'Pagination metadata for a connection') do
+    field :has_next_page, BooleanType, description: 'Whether more items exist after this page'
+    field :start_cursor,  StringType,  description: 'Cursor of the first item on this page'
+    field :end_cursor,    StringType,  description: 'Cursor of the last item on this page; ' \
+                                                    'pass as `after` to fetch the next page'
   # Pagination types
   # ---------------------------------------------------------------------------
 
