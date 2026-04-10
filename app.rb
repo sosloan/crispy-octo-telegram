@@ -31,15 +31,21 @@ class SaratogaApp < Sinatra::Base
   configure do
     set :show_exceptions, false
     set :raise_errors,    false
+    set :views, File.join(__dir__, 'views')
   end
 
   configure :test do
     disable :protection
   end
 
-  # Health check
+  # Homepage (HTML for browsers) / health check (JSON for API clients)
   get '/' do
-    json status: 'ok', service: 'Saratoga Orchards GenQL API'
+    if request.accept.any? { |a| a.to_s.include?('text/html') }
+      content_type :html
+      erb :homepage
+    else
+      json status: 'ok', service: 'Saratoga Orchards GenQL API'
+    end
   end
 
   # Main GenQL endpoint
@@ -105,16 +111,6 @@ class SaratogaApp < Sinatra::Base
 
   # Introspection: describe the schema in plain JSON
   get '/schema' do
-    types = {}
-    [Saratoga::QueryType, Saratoga::MutationType,
-     Saratoga::OrchardType, Saratoga::OrchardConnection,
-     Saratoga::VarietyType, Saratoga::VarietyConnection,
-     Saratoga::HarvestType, Saratoga::HarvestConnection,
-     GenQL::PageInfoType].each do |type|
-     Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType,
-     Saratoga::OrchardsConnection, Saratoga::VarietiesConnection, Saratoga::HarvestsConnection,
-     Saratoga::VarietiesInOrchardConnection, Saratoga::HarvestsInOrchardConnection,
-     GenQL::PageInfoType].each do |type|
     schema_types = [Saratoga::QueryType, Saratoga::MutationType, Saratoga::SubscriptionType,
                     Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType,
                     Saratoga::OrchardsConnection, Saratoga::VarietiesConnection,
