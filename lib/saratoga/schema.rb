@@ -30,7 +30,8 @@ module Saratoga
   end
 
   # Connection types for nested lists inside an orchard must be defined before
-  # OrchardType so they can be referenced as field types.
+  # OrchardType so they can be referenced as field types.  The food-truck
+  # connection is backfilled with its node type once FoodTruckType exists.
   VarietiesInOrchardConnection = GenQL.connection_type(
     'VarietiesInOrchardConnection', VarietyType,
     description: 'Paginated varieties within an orchard'
@@ -38,6 +39,10 @@ module Saratoga
   HarvestsInOrchardConnection = GenQL.connection_type(
     'HarvestsInOrchardConnection', HarvestType,
     description: 'Paginated harvests within an orchard'
+  )
+  FoodTrucksInOrchardConnection = GenQL.connection_type(
+    'FoodTrucksInOrchardConnection', VarietyType,
+    description: 'Paginated food trucks within an orchard'
   )
 
   OrchardType = GenQL::ObjectType.new('Orchard', description: 'A named orchard block') do
@@ -60,7 +65,35 @@ module Saratoga
                                 first: args['first'],
                                 offset: args['offset'] || 0)
     end
+
+    field :food_trucks, FoodTrucksInOrchardConnection,
+          description: 'Paginated food truck stalls hosted by this orchard' do |orchard, args, _ctx|
+      collection = Store.food_trucks.select { |ft| ft.orchard_id == orchard.id }
+      GenQL::Paginator.paginate(collection,
+                                first: args['first'],
+                                offset: args['offset'] || 0)
+    end
   end
+
+  FoodTruckType = GenQL::ObjectType.new('FoodTruck', description: 'A food truck stall at an orchard') do
+    field :id,                   GenQL::IDType,     description: 'Unique identifier'
+    field :orchard_id,           GenQL::IDType,     description: 'Host orchard id'
+    field :name,                 GenQL::StringType, description: 'Food truck name'
+    field :specialty_variety_id, GenQL::IDType,     description: 'Featured apple variety id'
+    field :menu,                 GenQL::StringType, description: 'What the stall serves'
+    field :notes,                GenQL::StringType, description: 'Optional stall notes'
+
+    field :orchard, OrchardType, description: 'Orchard hosting this food truck' do |food_truck, _args, _ctx|
+      food_truck.orchard
+    end
+
+    field :specialty_variety, VarietyType, description: 'Featured apple variety' do |food_truck, _args, _ctx|
+      food_truck.specialty_variety
+    end
+  end
+
+  # Backfill the node type now that FoodTruckType is defined.
+  FoodTrucksInOrchardConnection.fields['nodes'].instance_variable_set(:@type, FoodTruckType)
 
   # ---------------------------------------------------------------------------
   # Connection types — wrap list fields with pagination metadata
@@ -71,32 +104,6 @@ module Saratoga
     page_result
   end
 
-  OrchardConnection = GenQL::ObjectType.new('OrchardConnection',
-                                            description: 'Paginated list of orchards') do
-    field :nodes, OrchardType, description: 'Orchards on this page' do |conn, _args, _ctx|
-      conn.nodes
-    end
-
-    field :page_info, GenQL::PageInfoType, description: 'Pagination metadata', &PAGE_INFO_RESOLVER
-  end
-
-  VarietyConnection = GenQL::ObjectType.new('VarietyConnection',
-                                            description: 'Paginated list of varieties') do
-    field :nodes, VarietyType, description: 'Varieties on this page' do |conn, _args, _ctx|
-      conn.nodes
-    end
-
-    field :page_info, GenQL::PageInfoType, description: 'Pagination metadata', &PAGE_INFO_RESOLVER
-  end
-
-  HarvestConnection = GenQL::ObjectType.new('HarvestConnection',
-                                            description: 'Paginated list of harvests') do
-    field :nodes, HarvestType, description: 'Harvests on this page' do |conn, _args, _ctx|
-      conn.nodes
-    end
-
-    field :page_info, GenQL::PageInfoType, description: 'Pagination metadata', &PAGE_INFO_RESOLVER
-  end
   # Top-level connection types
   # ---------------------------------------------------------------------------
 
@@ -106,17 +113,14 @@ module Saratoga
                                               description: 'Paginated list of varieties')
   HarvestsConnection  = GenQL.connection_type('HarvestsConnection',  HarvestType,
                                               description: 'Paginated list of harvests')
+  FoodTrucksConnection = GenQL.connection_type('FoodTrucksConnection', FoodTruckType,
+                                               description: 'Paginated list of food trucks')
 
   # ---------------------------------------------------------------------------
   # Root query type
   # ---------------------------------------------------------------------------
 
   QueryType = GenQL::ObjectType.new('Query') do
-    field :orchards, OrchardConnection,
-          description: 'Paginated orchard list; use `first` and `after` for infinite scroll' do |_parent, args, _ctx|
-      GenQL::Pagination.paginate(Store.orchards,
-                                 first: args['first'],
-                                 after: args['after'])
     field :orchards, OrchardsConnection,
           description: 'Paginated list of all orchards' do |_parent, args, _ctx|
       GenQL::Paginator.paginate(Store.orchards,
@@ -128,11 +132,6 @@ module Saratoga
       Store.orchards.find { |o| o.id == args['id'] }
     end
 
-    field :varieties, VarietyConnection,
-          description: 'Paginated variety list; use `first` and `after` for infinite scroll' do |_parent, args, _ctx|
-      GenQL::Pagination.paginate(Store.varieties,
-                                 first: args['first'],
-                                 after: args['after'])
     field :varieties, VarietiesConnection,
           description: 'Paginated list of all varieties' do |_parent, args, _ctx|
       GenQL::Paginator.paginate(Store.varieties,
@@ -144,16 +143,22 @@ module Saratoga
       Store.varieties.find { |v| v.id == args['id'] }
     end
 
-    field :harvests, HarvestConnection,
-          description: 'Paginated harvest list; use `first` and `after` for infinite scroll' do |_parent, args, _ctx|
-      GenQL::Pagination.paginate(Store.harvests,
-                                 first: args['first'],
-                                 after: args['after'])
     field :harvests, HarvestsConnection,
           description: 'Paginated list of all harvests' do |_parent, args, _ctx|
       GenQL::Paginator.paginate(Store.harvests,
                                 first: args['first'],
                                 offset: args['offset'] || 0)
+    end
+
+    field :foodTrucks, FoodTrucksConnection,
+          description: 'Paginated list of all food trucks' do |_parent, args, _ctx|
+      GenQL::Paginator.paginate(Store.food_trucks,
+                                first: args['first'],
+                                offset: args['offset'] || 0)
+    end
+
+    field :foodTruck, FoodTruckType, description: 'Fetch a single food truck by id' do |_parent, args, _ctx|
+      Store.food_trucks.find { |ft| ft.id == args['id'] }
     end
   end
 
@@ -173,6 +178,18 @@ module Saratoga
       GenQL::SubscriptionBroker.publish('harvestAdded', harvest)
       harvest
     end
+
+    field :addFoodTruck, FoodTruckType, description: 'Open a new food truck stall' do |_parent, args, _ctx|
+      food_truck = Store.add_food_truck(
+        orchard_id: args['orchard_id'],
+        name: args['name'],
+        specialty_variety_id: args['specialty_variety_id'],
+        menu: args['menu'],
+        notes: args['notes']
+      )
+      GenQL::SubscriptionBroker.publish('foodTruckAdded', food_truck)
+      food_truck
+    end
   end
 
   # ---------------------------------------------------------------------------
@@ -181,6 +198,7 @@ module Saratoga
 
   SubscriptionType = GenQL::ObjectType.new('Subscription') do
     field :harvestAdded, HarvestType, description: 'Fired whenever a new harvest is recorded'
+    field :foodTruckAdded, FoodTruckType, description: 'Fired whenever a new food truck stall is opened'
   end
 
   # ---------------------------------------------------------------------------
@@ -189,4 +207,3 @@ module Saratoga
 
   SCHEMA = GenQL::Schema.new(query: QueryType, mutation: MutationType, subscription: SubscriptionType)
 end
-

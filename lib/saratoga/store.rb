@@ -26,6 +26,16 @@ module Saratoga
     end
   end
 
+  FoodTruck = Struct.new(:id, :orchard_id, :name, :specialty_variety_id, :menu, :notes) do
+    def orchard
+      Store.orchards.find { |o| o.id == orchard_id }
+    end
+
+    def specialty_variety
+      Store.varieties.find { |v| v.id == specialty_variety_id }
+    end
+  end
+
   # ---------------------------------------------------------------------------
   # Store — SQLite-backed repository for the Saratoga domain.
   #
@@ -60,6 +70,12 @@ module Saratoga
         ).map { |row| harvest_from_row(row) }
       end
 
+      def food_trucks
+        db.execute(
+          'SELECT id, orchard_id, name, specialty_variety_id, menu, notes FROM food_trucks ORDER BY id'
+        ).map { |row| food_truck_from_row(row) }
+      end
+
       # Mutation helpers --------------------------------------------------
 
       def add_harvest(orchard_id:, variety_id:, quantity_kg:, harvested_at:, notes: nil)
@@ -71,6 +87,17 @@ module Saratoga
         )
         Harvest.new(id: next_id, orchard_id: orchard_id, variety_id: variety_id,
                     quantity_kg: quantity_kg, harvested_at: harvested_at, notes: notes)
+      end
+
+      def add_food_truck(orchard_id:, name:, specialty_variety_id: nil, menu: nil, notes: nil)
+        next_id = next_food_truck_id
+        db.execute(
+          'INSERT INTO food_trucks (id, orchard_id, name, specialty_variety_id, menu, notes) ' \
+          'VALUES (?, ?, ?, ?, ?, ?)',
+          [next_id, orchard_id, name, specialty_variety_id, menu, notes]
+        )
+        FoodTruck.new(id: next_id, orchard_id: orchard_id, name: name,
+                      specialty_variety_id: specialty_variety_id, menu: menu, notes: notes)
       end
 
       # Reset the database to a clean seeded state (used for test isolation).
@@ -90,6 +117,12 @@ module Saratoga
         "h#{n}"
       end
 
+      def next_food_truck_id
+        max_row = db.execute('SELECT MAX(CAST(SUBSTR(id, 3) AS INTEGER)) AS max_n FROM food_trucks').first
+        n = (max_row && max_row['max_n'] ? max_row['max_n'] : 0) + 1
+        "ft#{n}"
+      end
+
       def harvest_from_row(row)
         Harvest.new(
           id: row['id'],
@@ -97,6 +130,17 @@ module Saratoga
           variety_id: row['variety_id'],
           quantity_kg: row['quantity_kg'],
           harvested_at: row['harvested_at'],
+          notes: row['notes']
+        )
+      end
+
+      def food_truck_from_row(row)
+        FoodTruck.new(
+          id: row['id'],
+          orchard_id: row['orchard_id'],
+          name: row['name'],
+          specialty_variety_id: row['specialty_variety_id'],
+          menu: row['menu'],
           notes: row['notes']
         )
       end
