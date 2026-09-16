@@ -109,13 +109,26 @@ class SaratogaApp < Sinatra::Base
     ws.rack_response
   end
 
+  # Village Orchard food truck stall page
+  get '/food-truck' do
+    if request.accept.any? { |a| a.to_s.include?('text/html') }
+      @food_truck = Saratoga::Store.food_trucks.find { |ft| ft.id == 'ft1' }
+      @orchard    = Saratoga::Store.orchards.find { |o| o.id == 'o4' }
+      erb :food_truck
+    else
+      json Saratoga::Store.food_trucks.map(&:to_h)
+    end
+  end
+
   # Introspection: describe the schema in plain JSON
   get '/schema' do
     schema_types = [Saratoga::QueryType, Saratoga::MutationType, Saratoga::SubscriptionType,
                     Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType,
+                    Saratoga::FoodTruckType,
                     Saratoga::OrchardsConnection, Saratoga::VarietiesConnection,
                     Saratoga::HarvestsConnection, Saratoga::VarietiesInOrchardConnection,
-                    Saratoga::HarvestsInOrchardConnection, GenQL::PageInfoType]
+                    Saratoga::HarvestsInOrchardConnection, Saratoga::FoodTrucksInOrchardConnection,
+                    Saratoga::FoodTrucksConnection, GenQL::PageInfoType]
     types = {}
     schema_types.each do |type|
       types[type.name] = {

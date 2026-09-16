@@ -28,7 +28,13 @@ module Saratoga
       { id: 'v4', name: 'Calville Blanc', species: 'Malus domestica',
         season: 'mid',   notes: 'French heirloom; high vitamin C' },
       { id: 'v5', name: 'Wealthy',        species: 'Malus domestica',
-        season: 'mid',   notes: 'Hardy mid-season variety' }
+        season: 'mid',   notes: 'Hardy mid-season variety' },
+      { id: 'v6', name: 'Golden Delicious', species: 'Malus domestica',
+        season: 'mid',   notes: 'Sweet and mellow; classic all-purpose apple' },
+      { id: 'v7', name: 'Fuji',             species: 'Malus domestica',
+        season: 'late',  notes: 'Very sweet and crisp; stores well' },
+      { id: 'v8', name: 'Honeycrisp',       species: 'Malus domestica',
+        season: 'mid',   notes: 'Explosively crisp; food truck favourite' }
     ].freeze
 
     SEED_ORCHARDS = [
@@ -37,7 +43,16 @@ module Saratoga
       { id: 'o2', name: 'Summit Ridge',        location: 'Los Gatos, CA', established_year: 1978,
         variety_ids: %w[v2 v4 v5] },
       { id: 'o3', name: 'Creekside Block',     location: 'Saratoga, CA',  established_year: 2003,
-        variety_ids: %w[v1 v5] }
+        variety_ids: %w[v1 v5] },
+      { id: 'o4', name: 'Village Orchard',     location: 'Saratoga, CA',  established_year: 2015,
+        variety_ids: %w[v6 v7 v8] }
+    ].freeze
+
+    SEED_FOOD_TRUCKS = [
+      { id: 'ft1', orchard_id: 'o4', name: 'Village Orchard Food Truck',
+        specialty_variety_id: 'v8',
+        menu: 'Honeycrisp cider, apple hand pies, orchard slaw wraps',
+        notes: 'Weekend stall serving the Village Orchard harvest' }
     ].freeze
 
     SEED_HARVESTS = [
@@ -99,6 +114,7 @@ module Saratoga
         create_orchards_table(db)
         create_orchard_varieties_table(db)
         create_harvests_table(db)
+        create_food_trucks_table(db)
       end
 
       def create_varieties_table(db)
@@ -147,6 +163,19 @@ module Saratoga
         SQL
       end
 
+      def create_food_trucks_table(db)
+        db.execute(<<~SQL)
+          CREATE TABLE IF NOT EXISTS food_trucks (
+            id                   TEXT PRIMARY KEY,
+            orchard_id           TEXT NOT NULL REFERENCES orchards(id),
+            name                 TEXT NOT NULL,
+            specialty_variety_id TEXT REFERENCES varieties(id),
+            menu                 TEXT,
+            notes                TEXT
+          )
+        SQL
+      end
+
       # ------------------------------------------------------------------
       # Seed data (mirrors the original in-memory fixtures)
       # ------------------------------------------------------------------
@@ -155,6 +184,7 @@ module Saratoga
         seed_varieties(db)
         seed_orchards(db)
         seed_harvests(db)
+        seed_food_trucks(db)
       end
 
       def seed_varieties(db)
@@ -187,6 +217,16 @@ module Saratoga
             'INSERT OR IGNORE INTO harvests (id, orchard_id, variety_id, quantity_kg, harvested_at, notes) ' \
             'VALUES (?, ?, ?, ?, ?, ?)',
             [h[:id], h[:orchard_id], h[:variety_id], h[:quantity_kg], h[:harvested_at], h[:notes]]
+          )
+        end
+      end
+
+      def seed_food_trucks(db)
+        SEED_FOOD_TRUCKS.each do |ft|
+          db.execute(
+            'INSERT OR IGNORE INTO food_trucks (id, orchard_id, name, specialty_variety_id, menu, notes) ' \
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            [ft[:id], ft[:orchard_id], ft[:name], ft[:specialty_variety_id], ft[:menu], ft[:notes]]
           )
         end
       end

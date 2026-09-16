@@ -14,6 +14,7 @@ Style/FrozenStringLiteralComment:
 Metrics/BlockLength:
   Exclude:
     - "spec/**/*"
+    - "lib/saratoga/schema.rb"
 
 Metrics/MethodLength:
   Max: 20
@@ -38,7 +39,9 @@ Naming/MethodParameterName:
 Metrics/ModuleLength:
   Exclude:
     - "lib/saratoga/database.rb"
+    - "lib/saratoga/schema.rb"
 
 Metrics/ClassLength:
   Exclude:
     - "lib/saratoga/database.rb"
+    - "app.rb"

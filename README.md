@@ -39,11 +39,14 @@ lib/
     executor.rb           # Query executor
   saratoga/
     database.rb           # SQLite connection, schema migrations, and seed data
-    store.rb              # SQLite-backed repository (Variety, Orchard, Harvest)
+    store.rb              # SQLite-backed repository (Variety, Orchard, Harvest, FoodTruck)
     schema.rb             # Saratoga-specific GenQL schema (types + resolvers)
 app.rb                    # Sinatra HTTP application
 config.ru                 # Rack entry point
 spec/                     # RSpec test suite
+views/
+  homepage.erb            # Scholar-Athlete homepage
+  food_truck.erb          # Village Orchard food truck stall page
 ```
 
 ---
@@ -68,27 +71,42 @@ SARATOGA_DATABASE_PATH=/var/data/saratoga.db bundle exec rackup
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET`  | `/`  | Health check |
+| `GET`  | `/`  | Homepage (HTML) / health check (JSON) |
+| `GET`  | `/food-truck` | Village Orchard food truck stall page (HTML) / food truck list (JSON) |
 | `GET`  | `/schema` | Schema introspection (JSON) |
 | `POST` | `/genql` | Execute a GenQL query or mutation |
+
+The seed data includes the **Village Orchard** (`o4`) — the orchard that hosts the
+**Village Orchard Food Truck** (`ft1`), a weekend stall serving Honeycrisp cider,
+apple hand pies, and orchard slaw wraps.
 
 #### Example queries
 
 ```sh
-# List the first page of orchards with their varieties (infinite scroll)
+# List the first page of orchards (offset pagination)
 curl -s -XPOST http://localhost:9292/genql \
   -H 'Content-Type: application/json' \
-  -d '{"query":"{ orchards(first: 2) { nodes { name location varieties { name season } } page_info { has_next_page end_cursor } } }"}'
+  -d '{"query":"{ orchards(first: 2) { nodes { name location varieties { nodes { name season } } } page_info { total_count has_next_page } } }"}'
 
-# Fetch the next page using the cursor returned above
+# Fetch the next page using the offset argument
 curl -s -XPOST http://localhost:9292/genql \
   -H 'Content-Type: application/json' \
-  -d '{"query":"{ orchards(first: 2, after: \"o2\") { nodes { name } page_info { has_next_page end_cursor } } }"}'
+  -d '{"query":"{ orchards(first: 2, offset: 2) { nodes { name } page_info { has_next_page has_previous_page } } }"}'
 
 # Fetch a single orchard by id
 curl -s -XPOST http://localhost:9292/genql \
   -H 'Content-Type: application/json' \
-  -d '{"query":"{ orchard(id: \"o1\") { name harvests { quantity_kg harvested_at } } }"}'
+  -d '{"query":"{ orchard(id: \"o1\") { name harvests { nodes { quantity_kg harvested_at } } } }"}'
+
+# Fetch the Village Orchard food truck stall
+curl -s -XPOST http://localhost:9292/genql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"{ orchard(id: \"o4\") { name food_trucks { nodes { name menu specialty_variety { name } } } } }"}'
+
+# Open a new food truck stall
+curl -s -XPOST http://localhost:9292/genql \
+  -H 'Content-Type: application/json' \
+  -d '{"query":"mutation { addFoodTruck(orchard_id: \"o4\", name: \"Cider Cart\", menu: \"Fresh-pressed cider\") { id name } }"}'
 
 # Record a new harvest
 curl -s -XPOST http://localhost:9292/genql \
@@ -127,22 +145,22 @@ bundle exec rspec
 
 ### GenQL query syntax
 
-List fields (`orchards`, `varieties`, `harvests`) now return **connection types** that
-support cursor-based pagination for infinite scroll.  Every connection exposes:
+List fields (`orchards`, `varieties`, `harvests`, `foodTrucks`) return **connection types**
+that support offset-based pagination.  Every connection exposes:
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `nodes` | `[T]` | The items on this page |
+| `page_info.total_count` | `Int` | Total number of items in the unpaginated collection |
 | `page_info.has_next_page` | `Boolean` | `true` when more items follow |
-| `page_info.end_cursor` | `String` | Pass as `after` to fetch the next page |
-| `page_info.start_cursor` | `String` | Cursor of the first item on this page |
+| `page_info.has_previous_page` | `Boolean` | `true` when items precede this page |
 
 Arguments accepted by every list field:
 
 | Argument | Type | Description |
 |----------|------|-------------|
 | `first` | `Int` | Maximum number of items to return |
-| `after` | `ID` | Return items after this cursor (the previous page's `end_cursor`) |
+| `offset` | `Int` | Zero-based index of the first item to return |
 
 ```
 # Read query — all orchards, no pagination (bare braces default to "query")
@@ -153,17 +171,27 @@ Arguments accepted by every list field:
       location
       established_year
       varieties {
-        name
-        season
+        nodes {
+          name
+          season
+        }
       }
       harvests {
-        id
-        quantity_kg
-        harvested_at
-        variety { name }
+        nodes {
+          id
+          quantity_kg
+          harvested_at
+          variety { name }
+        }
+      }
+      food_trucks {
+        nodes {
+          name
+          menu
+        }
       }
     }
-    page_info { has_next_page end_cursor }
+    page_info { total_count has_next_page }
   }
 }
 
@@ -171,15 +199,25 @@ Arguments accepted by every list field:
 {
   orchards(first: 2) {
     nodes { id name location }
-    page_info { has_next_page end_cursor }
+    page_info { total_count has_next_page }
   }
 }
 
-# Next page — use end_cursor from the previous response
+# Next page — skip the first 2 orchards
 {
-  orchards(first: 2, after: "o2") {
+  orchards(first: 2, offset: 2) {
     nodes { id name location }
-    page_info { has_next_page end_cursor }
+    page_info { has_next_page has_previous_page }
+  }
+}
+
+# The Village Orchard food truck stall
+{
+  foodTruck(id: "ft1") {
+    name
+    menu
+    orchard { name location }
+    specialty_variety { name }
   }
 }
 
@@ -187,7 +225,7 @@ Arguments accepted by every list field:
 query {
   orchard(id: "o1") {
     name
-    varieties { name species notes }
+    varieties { nodes { name species notes } }
   }
 }
 
@@ -206,4 +244,19 @@ mutation {
     harvested_at
   }
 }
+
+# Mutation — open a new food truck stall
+mutation {
+  addFoodTruck(
+    orchard_id: "o4",
+    name: "Harvest Wagon",
+    specialty_variety_id: "v6",
+    menu: "Golden Delicious fritters"
+  ) {
+    id
+    name
+    orchard_id
+  }
+}
 ```
+

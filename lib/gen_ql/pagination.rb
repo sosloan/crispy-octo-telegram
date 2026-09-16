@@ -1,6 +1,11 @@
 # frozen_string_literal: true
 
 module GenQL
+  # Holds the result of a paginated query: the sliced +nodes+, the
+  # +total_count+ of the full collection, and boolean flags for whether
+  # additional pages exist before or after the current window.
+  PageResult = Struct.new(:nodes, :total_count, :has_next_page, :has_previous_page)
+
   # Cursor-based pagination helper for in-memory item lists.
   #
   # A cursor is the +id+ string of the last item seen by the client.  The
@@ -12,9 +17,6 @@ module GenQL
   #   result.has_next_page # => false
   #   result.end_cursor    # => "o3"
   module Pagination
-    # Value object returned by +paginate+.
-    PageResult = Struct.new(:nodes, :has_next_page, :end_cursor, :start_cursor)
-
     # @param items  [Array]        full ordered list of domain objects
     # @param first  [Integer, nil] maximum number of items to return; nil returns all
     # @param after  [String, nil]  opaque cursor (item id) after which to start
@@ -22,12 +24,13 @@ module GenQL
     def self.paginate(items, first: nil, after: nil)
       sliced           = items[start_index(items, after)..] || []
       nodes, has_next  = apply_limit(sliced, first)
+      total            = items.length
 
       PageResult.new(
         nodes: nodes,
+        total_count: total,
         has_next_page: has_next,
-        end_cursor: nodes.empty? ? nil : cursor_for(nodes.last),
-        start_cursor: nodes.empty? ? nil : cursor_for(nodes.first)
+        has_previous_page: start_index(items, after).positive?
       )
     end
 
@@ -52,10 +55,8 @@ module GenQL
 
       limit = first.to_i
       [sliced.first(limit), sliced.length > limit]
-  # Holds the result of a paginated query: the sliced +nodes+, the
-  # +total_count+ of the full collection, and boolean flags for whether
-  # additional pages exist before or after the current window.
-  PageResult = Struct.new(:nodes, :total_count, :has_next_page, :has_previous_page)
+    end
+  end
 
   # Stateless helper that slices a plain Ruby Array (or any object that
   # responds to +length+ and +slice+) according to +first+ / +offset+
@@ -84,7 +85,7 @@ module GenQL
               end
 
       has_next = (offset + nodes.length) < total
-      has_prev = offset > 0
+      has_prev = offset.positive?
 
       PageResult.new(nodes, total, has_next, has_prev)
     end

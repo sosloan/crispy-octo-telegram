@@ -27,9 +27,10 @@ RSpec.describe SaratogaApp do
       get '/schema'
       expect(last_response.status).to eq 200
       body = JSON.parse(last_response.body)
-      expect(body['schema']).to include('Orchard', 'OrchardConnection',
-                                        'Variety', 'VarietyConnection',
-                                        'Harvest', 'HarvestConnection',
+      expect(body['schema']).to include('Orchard', 'OrchardsConnection',
+                                        'Variety', 'VarietiesConnection',
+                                        'Harvest', 'HarvestsConnection',
+                                        'FoodTruck', 'FoodTrucksConnection',
                                         'PageInfo')
     end
   end
@@ -41,7 +42,6 @@ RSpec.describe SaratogaApp do
            'CONTENT_TYPE' => 'application/json'
     end
 
-    it 'returns 200 with connection data for a valid query' do
     it 'returns 200 with data for a valid query' do
       post_genql('{ orchards { nodes { name } } }')
       expect(last_response.status).to eq 200
@@ -86,11 +86,6 @@ RSpec.describe SaratogaApp do
       expect(last_response.status).to eq 200
       orchards = JSON.parse(last_response.body)['data']['orchards']['nodes']
       expect(orchards.first['varieties']['nodes']).to be_an(Array)
-    it 'returns nested orchard data' do
-      post_genql('{ orchards { nodes { name varieties { name } } } }')
-      expect(last_response.status).to eq 200
-      orchards = JSON.parse(last_response.body)['data']['orchards']['nodes']
-      expect(orchards.first['varieties']).to be_an(Array)
     end
   end
 
@@ -162,6 +157,46 @@ RSpec.describe SaratogaApp do
       expect(last_response.status).to eq 200
       body = JSON.parse(last_response.body)
       expect(body[0]['data']['orchards']['nodes']).to be_an(Array)
+    end
+  end
+
+  describe 'GET /food-truck' do
+    it 'returns 200 with JSON food truck data for API clients' do
+      get '/food-truck', {}, 'HTTP_ACCEPT' => 'application/json'
+      expect(last_response.status).to eq 200
+      body = JSON.parse(last_response.body)
+      expect(body).to be_an(Array)
+      expect(body.first['name']).to eq 'Village Orchard Food Truck'
+      expect(body.first['orchard_id']).to eq 'o4'
+    end
+
+    it 'renders the food truck stall page for browsers' do
+      get '/food-truck', {}, 'HTTP_ACCEPT' => 'text/html'
+      expect(last_response.status).to eq 200
+      expect(last_response.content_type).to include('text/html')
+      expect(last_response.body).to include('Village Orchard')
+    end
+  end
+
+  describe 'POST /genql food trucks' do
+    def post_genql(query)
+      post '/genql',
+           JSON.generate({ 'query' => query }),
+           'CONTENT_TYPE' => 'application/json'
+    end
+
+    it 'queries the foodTrucks connection' do
+      post_genql('{ foodTrucks { nodes { id name orchard_id } } }')
+      expect(last_response.status).to eq 200
+      trucks = JSON.parse(last_response.body)['data']['foodTrucks']['nodes']
+      expect(trucks.first['name']).to eq 'Village Orchard Food Truck'
+    end
+
+    it 'executes the addFoodTruck mutation' do
+      post_genql('mutation { addFoodTruck(orchard_id: "o4", name: "Cider Cart") { id name } }')
+      expect(last_response.status).to eq 200
+      truck = JSON.parse(last_response.body)['data']['addFoodTruck']
+      expect(truck['name']).to eq 'Cider Cart'
     end
   end
 end
