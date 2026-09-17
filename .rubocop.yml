@@ -13,13 +13,20 @@ Style/FrozenStringLiteralComment:
 
 Metrics/BlockLength:
   Exclude:
+    - "app.rb"
+    - "bench/**/*"
+    - "lib/saratoga/schema.rb"
     - "spec/**/*"
 
 Metrics/MethodLength:
   Max: 20
+  Exclude:
+    - "lib/gen_ql/executor.rb"
 
 Metrics/AbcSize:
   Max: 25
+  Exclude:
+    - "lib/gen_ql/executor.rb"
 
 Metrics/CyclomaticComplexity:
   Max: 15
@@ -38,7 +45,10 @@ Naming/MethodParameterName:
 Metrics/ModuleLength:
   Exclude:
     - "lib/saratoga/database.rb"
+    - "lib/saratoga/schema.rb"
 
 Metrics/ClassLength:
   Exclude:
+    - "app.rb"
     - "lib/saratoga/database.rb"
+    - "lib/gen_ql/executor.rb"

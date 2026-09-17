@@ -152,7 +152,8 @@ RSpec.describe 'Stress tests' do
     end
 
     it 'accumulates no errors across 200 successful read queries' do
-      query = '{ orchards { nodes { name location varieties { nodes { name } } harvests { nodes { id quantity_kg } } } } }'
+      query = '{ orchards { nodes { name location varieties { nodes { name } } ' \
+              'harvests { nodes { id quantity_kg } } } } }'
       errors_seen = []
       200.times do
         result = executor.execute(query)

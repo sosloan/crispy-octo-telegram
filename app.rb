@@ -94,7 +94,7 @@ class SaratogaApp < Sinatra::Base
     body_str = request.body.read
     halt 413, json(errors: [{ message: 'Request body too large' }]) if body_str.bytesize > MAX_REQUEST_BYTES
 
-    payload  = JSON.parse(body_str)
+    payload = JSON.parse(body_str)
 
     if payload.is_a?(Array)
       halt 400, json(errors: [{ message: 'Batch must contain at least one request' }]) if payload.empty?
@@ -123,9 +123,7 @@ class SaratogaApp < Sinatra::Base
 
   # WebSocket subscription endpoint
   get '/subscriptions' do
-    unless Faye::WebSocket.websocket?(request.env)
-      halt 400, json(errors: [{ message: 'WebSocket upgrade required' }])
-    end
+    halt 400, json(errors: [{ message: 'WebSocket upgrade required' }]) unless Faye::WebSocket.websocket?(request.env)
 
     ws = Faye::WebSocket.new(request.env)
     subscription_ids = []

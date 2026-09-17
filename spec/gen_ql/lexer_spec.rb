@@ -92,7 +92,7 @@ RSpec.describe GenQL::Lexer do
     end
 
     it 'handles multiple whitespace characters between tokens' do
-      types = token_types("{    name   }")
+      types = token_types('{    name   }')
       expect(types).to eq %i[LBRACE NAME RBRACE EOF]
     end
 

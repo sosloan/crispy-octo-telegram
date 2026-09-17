@@ -9,7 +9,7 @@ RSpec.describe GenQL::SubscriptionBroker do
 
   describe '.subscribe' do
     it 'returns an opaque subscription id' do
-      id = described_class.subscribe('myEvent') { |_d| }
+      id = described_class.subscribe('myEvent') { nil }
       expect(id).to be_a(String)
       expect(id).not_to be_empty
     end

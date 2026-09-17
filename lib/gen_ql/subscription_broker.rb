@@ -16,18 +16,18 @@ module GenQL
     class << self
       def subscribe(event_name, &callback)
         id = SecureRandom.uuid
-        MUTEX.synchronize { ensure_subscribers[event_name.to_s] << { id: id, callback: callback } }
+        MUTEX.synchronize { subscribers[event_name.to_s] << { id: id, callback: callback } }
         id
       end
 
       def unsubscribe(subscription_id)
         MUTEX.synchronize do
-          ensure_subscribers.each_value { |subs| subs.reject! { |s| s[:id] == subscription_id } }
+          subscribers.each_value { |subs| subs.reject! { |s| s[:id] == subscription_id } }
         end
       end
 
       def publish(event_name, data)
-        subs = MUTEX.synchronize { ensure_subscribers[event_name.to_s].dup }
+        subs = MUTEX.synchronize { subscribers[event_name.to_s].dup }
         subs.each { |s| s[:callback].call(data) }
       end
 
@@ -38,7 +38,7 @@ module GenQL
       private
 
       # Must be called within MUTEX.synchronize.
-      def ensure_subscribers
+      def subscribers
         @subscribers ||= Hash.new { |h, k| h[k] = [] }
       end
     end

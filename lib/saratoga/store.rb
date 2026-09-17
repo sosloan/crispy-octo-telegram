@@ -88,8 +88,8 @@ module Saratoga
 
       private
 
-      def with_db(&block)
-        Database.synchronize(&block)
+      def with_db(&)
+        Database.synchronize(&)
       end
 
       def next_harvest_id(db)

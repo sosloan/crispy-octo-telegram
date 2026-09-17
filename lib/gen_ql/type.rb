@@ -102,7 +102,7 @@ module GenQL
   #   OrchardsConnection = GenQL.connection_type('OrchardsConnection', OrchardType)
   def self.connection_type(name, node_type, description: nil)
     ObjectType.new(name, description: description) do
-      field :nodes,     node_type,    description: 'Paginated list of items' do |result, _args, _ctx|
+      field :nodes, node_type, description: 'Paginated list of items' do |result, _args, _ctx|
         result.nodes
       end
       field :page_info, PageInfoType, description: 'Pagination metadata' do |result, _args, _ctx|

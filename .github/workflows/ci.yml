@@ -26,5 +26,8 @@ jobs:
       - name: Check Ruby syntax
         run: find . -type f \( -name '*.rb' -o -name '*.ru' \) -not -path './vendor/*' -print0 | xargs -0 -n1 ruby -c
 
+      - name: Run lint checks
+        run: bundle exec rubocop
+
       - name: Run test suite
         run: bundle exec rspec

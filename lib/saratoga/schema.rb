@@ -120,7 +120,10 @@ module Saratoga
 
       raise GenQL::ExecutionError, 'Unknown orchard_id' unless orchard
       raise GenQL::ExecutionError, 'Unknown variety_id' unless variety
-      raise GenQL::ExecutionError, 'quantity_kg must be a positive integer' unless quantity.is_a?(Integer) && quantity.positive?
+      unless quantity.is_a?(Integer) && quantity.positive?
+        raise GenQL::ExecutionError,
+              'quantity_kg must be a positive integer'
+      end
 
       begin
         Date.iso8601(args['harvested_at'].to_s)

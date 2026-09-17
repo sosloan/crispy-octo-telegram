@@ -52,9 +52,7 @@ RSpec.describe GenQL::Parser do
     end
 
     it 'rejects excessive query nesting' do
-      query = ('field { ' * (GenQL::Parser::MAX_DEPTH + 1)) +
-              'value' +
-              (' }' * (GenQL::Parser::MAX_DEPTH + 1))
+      query = "#{'field { ' * (GenQL::Parser::MAX_DEPTH + 1)}value#{' }' * (GenQL::Parser::MAX_DEPTH + 1)}"
       expect { parse("{ #{query} }") }.to raise_error(GenQL::ParseError, /maximum depth/)
     end
 
