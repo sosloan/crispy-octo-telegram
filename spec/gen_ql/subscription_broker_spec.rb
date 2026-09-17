@@ -31,6 +31,16 @@ RSpec.describe GenQL::SubscriptionBroker do
       expect(results).to contain_exactly('a:hello', 'b:hello')
     end
 
+    it 'isolates and removes failing subscribers' do
+      calls = 0
+      described_class.subscribe('evt') { raise 'closed connection' }
+      described_class.subscribe('evt') { calls += 1 }
+
+      expect { described_class.publish('evt', 'data') }.not_to raise_error
+      described_class.publish('evt', 'data')
+      expect(calls).to eq 2
+    end
+
     it 'does not call subscribers for other events' do
       received = []
       described_class.subscribe('eventA') { |d| received << d }

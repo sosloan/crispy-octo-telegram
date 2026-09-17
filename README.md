@@ -134,7 +134,11 @@ docker run --rm -p 9292:9292 \
   saratoga-genql
 ```
 
-Terminate TLS at the load balancer or reverse proxy. Configure probes against
+Do not expose Puma directly to the internet. Terminate TLS at an ingress or
+reverse proxy and enforce the same request-body limit there for both
+Content-Length and chunked uploads; Puma cannot reject an oversized chunked
+body before buffering it. `deploy/nginx.conf` provides a reference proxy
+configuration for the default 1 MiB limit. Configure probes against
 `/health/live` and `/health/ready`, and back up the SQLite volume regularly.
 
 ---

@@ -104,6 +104,12 @@ RSpec.describe GenQL::Executor do
         exec_with_sub.subscribe(query, max_subscriptions: 1) { nil }
       end.to raise_error(GenQL::ExecutionError, /limit/)
     end
+
+    it 'validates nested fields before registering subscriptions' do
+      expect do
+        exec_with_sub.subscribe('subscription { personAdded { unknownField } }') { nil }
+      end.to raise_error(GenQL::ExecutionError, /unknownField/)
+    end
   end
 
   describe '#execute' do

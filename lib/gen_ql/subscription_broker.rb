@@ -28,7 +28,11 @@ module GenQL
 
       def publish(event_name, data)
         subs = MUTEX.synchronize { subscribers[event_name.to_s].dup }
-        subs.each { |s| s[:callback].call(data) }
+        subs.each do |subscriber|
+          subscriber[:callback].call(data)
+        rescue StandardError
+          unsubscribe(subscriber[:id])
+        end
       end
 
       def reset!

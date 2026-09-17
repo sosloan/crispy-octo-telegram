@@ -79,6 +79,7 @@ module GenQL
         field_def = root_type.fields[ast_field.name]
         raise ExecutionError, "Field '#{ast_field.name}' not found on subscription type" unless field_def
 
+        validate_selections(ast_field.selections, field_def.type)
         [ast_field, field_def]
       end
       definitions.each do |ast_field, field_def|
@@ -102,6 +103,15 @@ module GenQL
     end
 
     private
+
+    def validate_selections(selections, type)
+      selections.each do |selection|
+        field_def = type.respond_to?(:fields) && type.fields[selection.name]
+        raise ExecutionError, "Field '#{selection.name}' not found on type '#{type.name}'" unless field_def
+
+        validate_selections(selection.selections, field_def.type)
+      end
+    end
 
     # Returns true when any operation in the document is a mutation, ensuring
     # mixed-operation documents are never deduplicated or cached.
