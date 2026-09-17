@@ -2,7 +2,7 @@
 
 source 'https://rubygems.org'
 
-ruby '~> 3.2'
+ruby '~> 3.4'
 
 gem 'faye-websocket', '~> 0.12'
 gem 'json', '~> 2.7'

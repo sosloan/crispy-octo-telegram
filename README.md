@@ -4,6 +4,8 @@
 
 A GraphQL-inspired backend for Saratoga Orchards, written in Ruby.
 
+Requires Ruby 3.4.
+
 > *"The system has multiple kinds of intent, and each kind gets compiled into the language best suited to express or enforce it."*
 
 ---

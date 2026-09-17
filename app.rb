@@ -91,7 +91,7 @@ class SaratogaApp < Sinatra::Base
 
     halt 413, json(errors: [{ message: 'Request body too large' }]) if request.content_length.to_i > MAX_REQUEST_BYTES
 
-    body_str = request.body.read
+    body_str = request.body.read(MAX_REQUEST_BYTES + 1)
     halt 413, json(errors: [{ message: 'Request body too large' }]) if body_str.bytesize > MAX_REQUEST_BYTES
 
     payload = JSON.parse(body_str)
@@ -125,7 +125,7 @@ class SaratogaApp < Sinatra::Base
   get '/subscriptions' do
     halt 400, json(errors: [{ message: 'WebSocket upgrade required' }]) unless Faye::WebSocket.websocket?(request.env)
 
-    ws = Faye::WebSocket.new(request.env)
+    ws = Faye::WebSocket.new(request.env, nil, max_length: MAX_REQUEST_BYTES)
     subscription_ids = []
 
     ws.on :message do |event|
@@ -141,13 +141,14 @@ class SaratogaApp < Sinatra::Base
       end
 
       query = validate_query!(payload)
-      ctx     = payload.fetch('context', {})
-      if subscription_ids.length >= MAX_SUBSCRIPTIONS
+      ctx = payload.fetch('context', {})
+      remaining_subscriptions = MAX_SUBSCRIPTIONS - subscription_ids.length
+      if remaining_subscriptions <= 0
         ws.send(JSON.generate({ errors: [{ message: 'Subscription limit exceeded' }] }))
         next
       end
 
-      ids = EXECUTOR.subscribe(query, context: ctx) do |result|
+      ids = EXECUTOR.subscribe(query, context: ctx, max_subscriptions: remaining_subscriptions) do |result|
         ws.send(JSON.generate(result))
       end
       subscription_ids.concat(ids)

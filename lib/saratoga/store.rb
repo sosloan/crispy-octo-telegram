@@ -61,7 +61,8 @@ module Saratoga
       def harvests
         with_db do |db|
           db.execute(
-            'SELECT id, orchard_id, variety_id, quantity_kg, harvested_at, notes FROM harvests ORDER BY id'
+            'SELECT id, orchard_id, variety_id, quantity_kg, harvested_at, notes FROM harvests ' \
+            'ORDER BY CAST(SUBSTR(id, 2) AS INTEGER)'
           ).map { |row| harvest_from_row(row) }
         end
       end

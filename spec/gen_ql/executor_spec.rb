@@ -88,6 +88,22 @@ RSpec.describe GenQL::Executor do
         exec_with_sub.subscribe('subscription { unknownField { name } }') { nil }
       end.to raise_error(GenQL::ExecutionError, /unknownField/)
     end
+
+    it 'validates all fields before registering subscriptions' do
+      payloads = []
+      expect do
+        exec_with_sub.subscribe('subscription { personAdded { name } unknownField }') { |payload| payloads << payload }
+      end.to raise_error(GenQL::ExecutionError)
+      GenQL::SubscriptionBroker.publish('personAdded', { 'name' => 'Alice' })
+      expect(payloads).to be_empty
+    end
+
+    it 'enforces the subscription count before registering callbacks' do
+      query = 'subscription { personAdded { name } personAdded { name } }'
+      expect do
+        exec_with_sub.subscribe(query, max_subscriptions: 1) { nil }
+      end.to raise_error(GenQL::ExecutionError, /limit/)
+    end
   end
 
   describe '#execute' do

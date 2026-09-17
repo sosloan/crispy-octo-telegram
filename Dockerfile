@@ -1,4 +1,4 @@
-FROM ruby:3.2.3-slim-bookworm
+FROM ruby:3.4.10-slim-bookworm
 
 ENV BUNDLE_DEPLOYMENT=true \
     BUNDLE_WITHOUT=development:test \

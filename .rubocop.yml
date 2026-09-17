@@ -1,6 +1,7 @@
 AllCops:
   NewCops: enable
-  TargetRubyVersion: 3.2
+  SuggestExtensions: false
+  TargetRubyVersion: 3.4
   Exclude:
     - "vendor/**/*"
 
@@ -30,6 +31,10 @@ Metrics/AbcSize:
 
 Metrics/CyclomaticComplexity:
   Max: 15
+
+Metrics/PerceivedComplexity:
+  Exclude:
+    - "lib/gen_ql/executor.rb"
 
 Layout/LineLength:
   Max: 120

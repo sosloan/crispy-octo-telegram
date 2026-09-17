@@ -154,7 +154,7 @@ CHECKSUMS
   websocket-extensions (0.1.5) sha256=1c6ba63092cda343eb53fc657110c71c754c56484aad42578495227d717a8241
 
 RUBY VERSION
-  ruby 3.2.3
+  ruby 3.4.10
 
 BUNDLED WITH
   4.0.9

@@ -20,7 +20,7 @@ jobs:
       - name: Set up Ruby
         uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
         with:
-          ruby-version: "3.2.3"
+          ruby-version: "3.4.10"
           bundler-cache: true
 
       - name: Check Ruby syntax
@@ -31,3 +31,6 @@ jobs:
 
       - name: Run test suite
         run: bundle exec rspec
+
+      - name: Build production image
+        run: docker build .
