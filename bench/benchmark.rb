@@ -23,14 +23,14 @@ QUERIES = {
 
   list_with_scalars: '{ orchards { id name location established_year } }',
 
-  nested_one_level: '{ orchards { name varieties { name season } } }',
+  nested_one_level: '{ orchards { nodes { name varieties { nodes { name season } } } } }',
 
   nested_two_levels: <<~GQL,
     {
       orchards {
         name
         location
-        varieties { name species season notes }
+        varieties { nodes { name species season notes } }
         harvests  { id quantity_kg harvested_at }
       }
     }
@@ -55,7 +55,7 @@ QUERIES = {
     {
       orchard(id: "o2") {
         name
-        varieties { name season }
+        varieties { nodes { name season } }
         harvests  { quantity_kg harvested_at variety { name } }
       }
     }
@@ -63,9 +63,9 @@ QUERIES = {
 
   all_varieties: '{ varieties { id name species season notes } }',
 
-  all_harvests: '{ harvests { id orchard_id variety_id quantity_kg harvested_at } }',
+  all_harvests: '{ harvests { nodes { id orchard_id variety_id quantity_kg harvested_at } } }',
 
-  harvests_with_variety: '{ harvests { id quantity_kg harvested_at variety { name species } } }',
+  harvests_with_variety: '{ harvests { nodes { id quantity_kg harvested_at variety { name species } } } }',
 
   mutation: <<~GQL
     mutation {

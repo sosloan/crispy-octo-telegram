@@ -63,47 +63,61 @@ module GenQL
     # @param context      [Hash]    caller-supplied context forwarded to resolvers
     # @yieldparam payload [Hash]    { data: { field_name => resolved_value } }
     # @return [Array<String>]  opaque subscription IDs (pass to +SubscriptionBroker.unsubscribe+)
-    def subscribe(query_string, context: {}, &callback)
+    def subscribe(query_string, context: {}, max_subscriptions: nil, &callback)
+      subscription_ids = []
       tokens   = Lexer.new(query_string).tokenize
       document = Parser.new(tokens).parse
 
-      subscription_ids = []
-      document.operations.each do |operation|
-        next unless operation.type.to_s == 'subscription'
+      fields = document.operations
+                       .select { |operation| operation.type.to_s == 'subscription' }
+                       .flat_map(&:selections)
+      root_type = @schema.subscription_type
+      raise ExecutionError, 'No subscription type defined in schema' if fields.any? && !root_type
+      raise ExecutionError, 'Subscription limit exceeded' if max_subscriptions && fields.length > max_subscriptions
 
-        root_type = @schema.subscription_type
-        raise ExecutionError, 'No subscription type defined in schema' unless root_type
+      definitions = fields.map do |ast_field|
+        field_def = root_type.fields[ast_field.name]
+        raise ExecutionError, "Field '#{ast_field.name}' not found on subscription type" unless field_def
 
-        operation.selections.each do |ast_field|
-          field_def = root_type.fields[ast_field.name]
-          raise ExecutionError, "Field '#{ast_field.name}' not found on subscription type" unless field_def
+        validate_selections(ast_field.selections, field_def.type)
+        [ast_field, field_def]
+      end
+      definitions.each do |ast_field, field_def|
+        captured_field_name = ast_field.name
+        captured_selections = ast_field.selections
 
-          captured_field_name = ast_field.name
-          captured_selections = ast_field.selections
-
-          id = SubscriptionBroker.subscribe(captured_field_name) do |event_data|
-            result = if captured_selections.any?
-                       resolve_nested(event_data, ast_field, field_def, context)
-                     else
-                       event_data
-                     end
-            callback.call({ data: { captured_field_name => result } })
-          end
-          subscription_ids << id
+        id = SubscriptionBroker.subscribe(captured_field_name) do |event_data|
+          result = if captured_selections.any?
+                     resolve_nested(event_data, ast_field, field_def, context)
+                   else
+                     event_data
+                   end
+          callback.call({ data: { captured_field_name => result } })
         end
+        subscription_ids << id
       end
       subscription_ids
+    rescue StandardError
+      subscription_ids.each { |id| SubscriptionBroker.unsubscribe(id) }
+      raise
     end
 
     private
 
-    # Returns true when +query_string+ begins with the "mutation" keyword,
-    # indicating that the operation has side-effects and must not be
-    # deduplicated or cached.  Matching is case-insensitive to handle any
-    # client capitalisation, although the GenQL lexer normalises keywords to
-    # lower-case in practice.
+    def validate_selections(selections, type)
+      selections.each do |selection|
+        field_def = type.respond_to?(:fields) && type.fields[selection.name]
+        raise ExecutionError, "Field '#{selection.name}' not found on type '#{type.name}'" unless field_def
+
+        validate_selections(selection.selections, field_def.type)
+      end
+    end
+
+    # Returns true when any operation in the document is a mutation, ensuring
+    # mixed-operation documents are never deduplicated or cached.
     def mutation?(query_string)
-      query_string.lstrip.downcase.start_with?('mutation')
+      tokens = Lexer.new(query_string).tokenize
+      Parser.new(tokens).parse.operations.any? { |operation| operation.type.to_s == 'mutation' }
     end
 
     # Build the cache key used to identify a unique request.

@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@984c0c890880bbf811283d6f09c4607c62d210a4 # v1.323.0
+        with:
+          ruby-version: "3.4.10"
+          bundler-cache: true
+
+      - name: Check Ruby syntax
+        run: find . -type f \( -name '*.rb' -o -name '*.ru' \) -not -path './vendor/*' -print0 | xargs -0 -n1 ruby -c
+
+      - name: Run lint checks
+        run: bundle exec rubocop
+
+      - name: Run test suite
+        run: bundle exec rspec
+
+      - name: Build production image
+        run: docker build .

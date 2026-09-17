@@ -6,17 +6,17 @@ require 'gen_ql'
 RSpec.describe GenQL::ObjectType do
   describe '.new' do
     it 'stores the type name as a string' do
-      type = described_class.new('Orchard') {}
+      type = described_class.new('Orchard')
       expect(type.name).to eq 'Orchard'
     end
 
     it 'stores an optional description' do
-      type = described_class.new('Orchard', description: 'A fruit orchard') {}
+      type = described_class.new('Orchard', description: 'A fruit orchard')
       expect(type.description).to eq 'A fruit orchard'
     end
 
     it 'starts with an empty fields hash' do
-      type = described_class.new('Empty') {}
+      type = described_class.new('Empty')
       expect(type.fields).to eq({})
     end
 
@@ -63,9 +63,9 @@ RSpec.describe GenQL::ObjectType do
 end
 
 RSpec.describe GenQL::Schema do
-  let(:query_type)    { GenQL::ObjectType.new('Query') {} }
-  let(:mutation_type) { GenQL::ObjectType.new('Mutation') {} }
-  let(:sub_type)      { GenQL::ObjectType.new('Subscription') {} }
+  let(:query_type)    { GenQL::ObjectType.new('Query') }
+  let(:mutation_type) { GenQL::ObjectType.new('Mutation') }
+  let(:sub_type)      { GenQL::ObjectType.new('Subscription') }
 
   it 'exposes the query type' do
     schema = described_class.new(query: query_type)

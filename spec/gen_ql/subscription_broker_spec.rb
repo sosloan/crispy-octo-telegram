@@ -9,7 +9,7 @@ RSpec.describe GenQL::SubscriptionBroker do
 
   describe '.subscribe' do
     it 'returns an opaque subscription id' do
-      id = described_class.subscribe('myEvent') { |_d| }
+      id = described_class.subscribe('myEvent') { nil }
       expect(id).to be_a(String)
       expect(id).not_to be_empty
     end
@@ -29,6 +29,16 @@ RSpec.describe GenQL::SubscriptionBroker do
       described_class.subscribe('evt') { |d| results << "b:#{d}" }
       described_class.publish('evt', 'hello')
       expect(results).to contain_exactly('a:hello', 'b:hello')
+    end
+
+    it 'isolates and removes failing subscribers' do
+      calls = 0
+      described_class.subscribe('evt') { raise 'closed connection' }
+      described_class.subscribe('evt') { calls += 1 }
+
+      expect { described_class.publish('evt', 'data') }.not_to raise_error
+      described_class.publish('evt', 'data')
+      expect(calls).to eq 2
     end
 
     it 'does not call subscribers for other events' do

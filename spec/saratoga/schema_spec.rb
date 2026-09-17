@@ -10,7 +10,6 @@ RSpec.describe 'Saratoga schema' do
   let(:executor) { GenQL::Executor.new(Saratoga::SCHEMA) }
 
   describe 'query orchards' do
-    it 'returns all orchards with basic fields' do
     it 'returns all orchards with basic fields via connection' do
       result = executor.execute('{ orchards { nodes { id name location established_year } } }')
       orchards = result[:data]['orchards']['nodes']
@@ -19,16 +18,6 @@ RSpec.describe 'Saratoga schema' do
       expect(orchards.map { |o| o['name'] }).to include('Saratoga Hill Block', 'Summit Ridge')
     end
 
-    it 'returns varieties nested inside an orchard' do
-      result = executor.execute('{ orchards { nodes { name varieties { name season } } } }')
-      hill   = result[:data]['orchards']['nodes'].find { |o| o['name'] == 'Saratoga Hill Block' }
-      expect(hill['varieties'].map { |v| v['name'] }).to include('Gravenstein', 'Pippin')
-    end
-
-    it 'returns harvests nested inside an orchard' do
-      result = executor.execute('{ orchards { nodes { id harvests { id quantity_kg } } } }')
-      hill   = result[:data]['orchards']['nodes'].find { |o| o['id'] == 'o1' }
-      expect(hill['harvests']).not_to be_empty
     it 'returns varieties nested inside an orchard via connection' do
       result = executor.execute('{ orchards { nodes { name varieties { nodes { name season } } } } }')
       hill   = result[:data]['orchards']['nodes'].find { |o| o['name'] == 'Saratoga Hill Block' }
@@ -129,9 +118,6 @@ RSpec.describe 'Saratoga schema' do
   end
 
   describe 'query varieties' do
-    it 'returns all varieties' do
-      result = executor.execute('{ varieties { nodes { id name species } } }')
-      expect(result[:data]['varieties']['nodes'].length).to eq 5
     it 'returns all varieties via connection' do
       result = executor.execute('{ varieties { nodes { id name species } } }')
       expect(result[:data]['varieties']['nodes'].length).to eq 5
@@ -169,15 +155,12 @@ RSpec.describe 'Saratoga schema' do
   end
 
   describe 'query harvests' do
-    it 'returns all recorded harvests' do
     it 'returns all recorded harvests via connection' do
       result = executor.execute('{ harvests { nodes { id orchard_id variety_id quantity_kg harvested_at } } }')
       expect(result[:data]['harvests']['nodes'].length).to eq 4
     end
 
     it 'returns variety details nested inside a harvest' do
-      result = executor.execute('{ harvests { nodes { variety { name } } } }')
-      names  = result[:data]['harvests']['nodes'].filter_map { |h| h.dig('variety', 'name') }
       result   = executor.execute('{ harvests { nodes { variety { name } } } }')
       names    = result[:data]['harvests']['nodes'].filter_map { |h| h.dig('variety', 'name') }
       expect(names).to include('Gravenstein', 'Pippin')
@@ -321,11 +304,18 @@ RSpec.describe 'Saratoga schema' do
       mutation = 'mutation { addHarvest(orchard_id: "o1", variety_id: "v3", ' \
                  'quantity_kg: 100, harvested_at: "2024-10-01") { id } }'
       executor.execute(mutation)
-      result = executor.execute('{ harvests { nodes { id } } }')
-      expect(result[:data]['harvests']['nodes'].length).to eq 5
       result = executor.execute('{ harvests { nodes { id } page_info { total_count } } }')
       expect(result[:data]['harvests']['nodes'].length).to eq 5
       expect(result[:data]['harvests']['page_info']['total_count']).to eq 5
+    end
+
+    it 'rejects invalid mutation input' do
+      result = executor.execute(
+        'mutation { addHarvest(orchard_id: "missing", variety_id: "v1", ' \
+        'quantity_kg: -1, harvested_at: "not-a-date") { id } }'
+      )
+      expect(result[:errors]).not_to be_empty
+      expect(Saratoga::Store.harvests.length).to eq 4
     end
   end
 
@@ -413,4 +403,3 @@ RSpec.describe 'Saratoga schema' do
     end
   end
 end
-

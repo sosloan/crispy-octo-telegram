@@ -145,6 +145,29 @@ RSpec.describe Saratoga::Store do
       Saratoga::Store.reset!
       expect(Saratoga::Store.harvests.length).to eq 4
     end
+
+    it 'assigns unique ids during concurrent writes' do
+      threads = 20.times.map do
+        Thread.new do
+          Saratoga::Store.add_harvest(
+            orchard_id: 'o1', variety_id: 'v1',
+            quantity_kg: 1, harvested_at: '2025-01-01'
+          )
+        end
+      end
+      ids = threads.map(&:value).map(&:id)
+      expect(ids.uniq.length).to eq 20
+    end
+
+    it 'orders generated ids numerically for stable cursors' do
+      7.times do
+        Saratoga::Store.add_harvest(
+          orchard_id: 'o1', variety_id: 'v1',
+          quantity_kg: 1, harvested_at: '2025-01-01'
+        )
+      end
+      expect(Saratoga::Store.harvests.map(&:id)).to eq((1..11).map { |number| "h#{number}" })
+    end
   end
 
   describe '#reset!' do

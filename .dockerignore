@@ -1,0 +1,9 @@
+.bundle
+.git
+.github
+coverage
+data
+pkg
+spec
+tmp
+*.db

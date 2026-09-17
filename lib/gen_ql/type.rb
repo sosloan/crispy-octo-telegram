@@ -82,19 +82,11 @@ module GenQL
   # Describes the pagination state for a connection field.
   # Returned as the +page_info+ sub-field on every *Connection type.
   PageInfoType = ObjectType.new('PageInfo', description: 'Pagination metadata for a connection') do
-    field :has_next_page, BooleanType, description: 'Whether more items exist after this page'
-    field :start_cursor,  StringType,  description: 'Cursor of the first item on this page'
-    field :end_cursor,    StringType,  description: 'Cursor of the last item on this page; ' \
-                                                    'pass as `after` to fetch the next page'
-  # Pagination types
-  # ---------------------------------------------------------------------------
-
-  # ObjectType that describes the metadata returned alongside a paginated list.
-  # Fields are resolved directly from a +GenQL::PageResult+ instance.
-  PageInfoType = ObjectType.new('PageInfo', description: 'Pagination metadata for a connection') do
     field :total_count,       IntType,     description: 'Total number of items in the unpaginated collection'
     field :has_next_page,     BooleanType, description: 'Whether more items follow the current page'
     field :has_previous_page, BooleanType, description: 'Whether items precede the current page'
+    field :start_cursor,      StringType,  description: 'Cursor of the first item on this page'
+    field :end_cursor,        StringType,  description: 'Cursor of the last item on this page'
   end
 
   # Factory that produces a named connection ObjectType wrapping *node_type*.
@@ -110,7 +102,7 @@ module GenQL
   #   OrchardsConnection = GenQL.connection_type('OrchardsConnection', OrchardType)
   def self.connection_type(name, node_type, description: nil)
     ObjectType.new(name, description: description) do
-      field :nodes,     node_type,    description: 'Paginated list of items' do |result, _args, _ctx|
+      field :nodes, node_type, description: 'Paginated list of items' do |result, _args, _ctx|
         result.nodes
       end
       field :page_info, PageInfoType, description: 'Pagination metadata' do |result, _args, _ctx|

@@ -1,13 +1,10 @@
 # frozen_string_literal: true
 
+require 'date'
 require_relative '../gen_ql'
 require_relative 'store'
 
 module Saratoga
-  # ---------------------------------------------------------------------------
-  # GenQL type definitions for the Saratoga Orchards domain
-  # ---------------------------------------------------------------------------
-
   VarietyType = GenQL::ObjectType.new('Variety', description: 'A named apple variety') do
     field :id,      GenQL::IDType,     description: 'Unique identifier'
     field :name,    GenQL::StringType, description: 'Variety name'
@@ -29,8 +26,6 @@ module Saratoga
     end
   end
 
-  # Connection types for nested lists inside an orchard must be defined before
-  # OrchardType so they can be referenced as field types.
   VarietiesInOrchardConnection = GenQL.connection_type(
     'VarietiesInOrchardConnection', VarietyType,
     description: 'Paginated varieties within an orchard'
@@ -48,125 +43,98 @@ module Saratoga
 
     field :varieties, VarietiesInOrchardConnection,
           description: 'Paginated apple varieties grown in this orchard' do |orchard, args, _ctx|
-      GenQL::Paginator.paginate(orchard.varieties,
-                                first: args['first'],
-                                offset: args['offset'] || 0)
+      GenQL::Paginator.paginate(
+        orchard.varieties,
+        first: args['first'],
+        offset: args['offset'],
+        after: args['after']
+      )
     end
 
     field :harvests, HarvestsInOrchardConnection,
           description: 'Paginated harvests recorded for this orchard' do |orchard, args, _ctx|
-      collection = Store.harvests.select { |h| h.orchard_id == orchard.id }
-      GenQL::Paginator.paginate(collection,
-                                first: args['first'],
-                                offset: args['offset'] || 0)
+      GenQL::Paginator.paginate(
+        Store.harvests.select { |harvest| harvest.orchard_id == orchard.id },
+        first: args['first'],
+        offset: args['offset'],
+        after: args['after']
+      )
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # Connection types — wrap list fields with pagination metadata
-  # ---------------------------------------------------------------------------
-
-  # Reusable PageInfo resolver (delegates to the PageResult struct fields).
-  PAGE_INFO_RESOLVER = lambda do |page_result, _args, _ctx|
-    page_result
-  end
-
-  OrchardConnection = GenQL::ObjectType.new('OrchardConnection',
-                                            description: 'Paginated list of orchards') do
-    field :nodes, OrchardType, description: 'Orchards on this page' do |conn, _args, _ctx|
-      conn.nodes
-    end
-
-    field :page_info, GenQL::PageInfoType, description: 'Pagination metadata', &PAGE_INFO_RESOLVER
-  end
-
-  VarietyConnection = GenQL::ObjectType.new('VarietyConnection',
-                                            description: 'Paginated list of varieties') do
-    field :nodes, VarietyType, description: 'Varieties on this page' do |conn, _args, _ctx|
-      conn.nodes
-    end
-
-    field :page_info, GenQL::PageInfoType, description: 'Pagination metadata', &PAGE_INFO_RESOLVER
-  end
-
-  HarvestConnection = GenQL::ObjectType.new('HarvestConnection',
-                                            description: 'Paginated list of harvests') do
-    field :nodes, HarvestType, description: 'Harvests on this page' do |conn, _args, _ctx|
-      conn.nodes
-    end
-
-    field :page_info, GenQL::PageInfoType, description: 'Pagination metadata', &PAGE_INFO_RESOLVER
-  end
-  # Top-level connection types
-  # ---------------------------------------------------------------------------
-
-  OrchardsConnection  = GenQL.connection_type('OrchardsConnection',  OrchardType,
-                                              description: 'Paginated list of orchards')
-  VarietiesConnection = GenQL.connection_type('VarietiesConnection', VarietyType,
-                                              description: 'Paginated list of varieties')
-  HarvestsConnection  = GenQL.connection_type('HarvestsConnection',  HarvestType,
-                                              description: 'Paginated list of harvests')
-
-  # ---------------------------------------------------------------------------
-  # Root query type
-  # ---------------------------------------------------------------------------
+  OrchardConnection = GenQL.connection_type(
+    'OrchardConnection', OrchardType,
+    description: 'Paginated list of orchards'
+  )
+  VarietyConnection = GenQL.connection_type(
+    'VarietyConnection', VarietyType,
+    description: 'Paginated list of varieties'
+  )
+  HarvestConnection = GenQL.connection_type(
+    'HarvestConnection', HarvestType,
+    description: 'Paginated list of harvests'
+  )
 
   QueryType = GenQL::ObjectType.new('Query') do
-    field :orchards, OrchardConnection,
-          description: 'Paginated orchard list; use `first` and `after` for infinite scroll' do |_parent, args, _ctx|
-      GenQL::Pagination.paginate(Store.orchards,
-                                 first: args['first'],
-                                 after: args['after'])
-    field :orchards, OrchardsConnection,
-          description: 'Paginated list of all orchards' do |_parent, args, _ctx|
-      GenQL::Paginator.paginate(Store.orchards,
-                                first: args['first'],
-                                offset: args['offset'] || 0)
+    field :orchards, OrchardConnection, description: 'Paginated list of all orchards' do |_parent, args, _ctx|
+      GenQL::Paginator.paginate(
+        Store.orchards,
+        first: args['first'],
+        offset: args['offset'],
+        after: args['after']
+      )
     end
 
     field :orchard, OrchardType, description: 'Fetch a single orchard by id' do |_parent, args, _ctx|
-      Store.orchards.find { |o| o.id == args['id'] }
+      Store.orchards.find { |orchard| orchard.id == args['id'] }
     end
 
-    field :varieties, VarietyConnection,
-          description: 'Paginated variety list; use `first` and `after` for infinite scroll' do |_parent, args, _ctx|
-      GenQL::Pagination.paginate(Store.varieties,
-                                 first: args['first'],
-                                 after: args['after'])
-    field :varieties, VarietiesConnection,
-          description: 'Paginated list of all varieties' do |_parent, args, _ctx|
-      GenQL::Paginator.paginate(Store.varieties,
-                                first: args['first'],
-                                offset: args['offset'] || 0)
+    field :varieties, VarietyConnection, description: 'Paginated list of all varieties' do |_parent, args, _ctx|
+      GenQL::Paginator.paginate(
+        Store.varieties,
+        first: args['first'],
+        offset: args['offset'],
+        after: args['after']
+      )
     end
 
     field :variety, VarietyType, description: 'Fetch a single variety by id' do |_parent, args, _ctx|
-      Store.varieties.find { |v| v.id == args['id'] }
+      Store.varieties.find { |variety| variety.id == args['id'] }
     end
 
-    field :harvests, HarvestConnection,
-          description: 'Paginated harvest list; use `first` and `after` for infinite scroll' do |_parent, args, _ctx|
-      GenQL::Pagination.paginate(Store.harvests,
-                                 first: args['first'],
-                                 after: args['after'])
-    field :harvests, HarvestsConnection,
-          description: 'Paginated list of all harvests' do |_parent, args, _ctx|
-      GenQL::Paginator.paginate(Store.harvests,
-                                first: args['first'],
-                                offset: args['offset'] || 0)
+    field :harvests, HarvestConnection, description: 'Paginated list of all harvests' do |_parent, args, _ctx|
+      GenQL::Paginator.paginate(
+        Store.harvests,
+        first: args['first'],
+        offset: args['offset'],
+        after: args['after']
+      )
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # Root mutation type
-  # ---------------------------------------------------------------------------
-
   MutationType = GenQL::ObjectType.new('Mutation') do
     field :addHarvest, HarvestType, description: 'Record a new harvest' do |_parent, args, _ctx|
+      orchard = Store.orchards.find { |item| item.id == args['orchard_id'] }
+      variety = Store.varieties.find { |item| item.id == args['variety_id'] }
+      quantity = args['quantity_kg']
+
+      raise GenQL::ExecutionError, 'Unknown orchard_id' unless orchard
+      raise GenQL::ExecutionError, 'Unknown variety_id' unless variety
+      unless quantity.is_a?(Integer) && quantity.positive?
+        raise GenQL::ExecutionError,
+              'quantity_kg must be a positive integer'
+      end
+
+      begin
+        Date.iso8601(args['harvested_at'].to_s)
+      rescue Date::Error
+        raise GenQL::ExecutionError, 'harvested_at must be an ISO-8601 date'
+      end
+
       harvest = Store.add_harvest(
-        orchard_id: args['orchard_id'],
-        variety_id: args['variety_id'],
-        quantity_kg: args['quantity_kg'].to_i,
+        orchard_id: orchard.id,
+        variety_id: variety.id,
+        quantity_kg: quantity,
         harvested_at: args['harvested_at'],
         notes: args['notes']
       )
@@ -175,18 +143,9 @@ module Saratoga
     end
   end
 
-  # ---------------------------------------------------------------------------
-  # Root subscription type
-  # ---------------------------------------------------------------------------
-
   SubscriptionType = GenQL::ObjectType.new('Subscription') do
     field :harvestAdded, HarvestType, description: 'Fired whenever a new harvest is recorded'
   end
 
-  # ---------------------------------------------------------------------------
-  # Schema
-  # ---------------------------------------------------------------------------
-
   SCHEMA = GenQL::Schema.new(query: QueryType, mutation: MutationType, subscription: SubscriptionType)
 end
-

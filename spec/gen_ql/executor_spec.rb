@@ -53,7 +53,7 @@ RSpec.describe GenQL::Executor do
     after  { GenQL::SubscriptionBroker.reset! }
 
     it 'returns an array of subscription IDs' do
-      ids = exec_with_sub.subscribe('subscription { personAdded { name } }') { |_r| }
+      ids = exec_with_sub.subscribe('subscription { personAdded { name } }') { nil }
       expect(ids).to be_an(Array)
       expect(ids.length).to eq 1
     end
@@ -79,13 +79,35 @@ RSpec.describe GenQL::Executor do
 
     it 'raises ExecutionError when no subscription type is defined in the schema' do
       expect do
-        exec.subscribe('subscription { personAdded { name } }') { |_r| }
+        exec.subscribe('subscription { personAdded { name } }') { nil }
       end.to raise_error(GenQL::ExecutionError, /No subscription type/)
     end
 
     it 'raises ExecutionError for unknown subscription fields' do
       expect do
-        exec_with_sub.subscribe('subscription { unknownField { name } }') { |_r| }
+        exec_with_sub.subscribe('subscription { unknownField { name } }') { nil }
+      end.to raise_error(GenQL::ExecutionError, /unknownField/)
+    end
+
+    it 'validates all fields before registering subscriptions' do
+      payloads = []
+      expect do
+        exec_with_sub.subscribe('subscription { personAdded { name } unknownField }') { |payload| payloads << payload }
+      end.to raise_error(GenQL::ExecutionError)
+      GenQL::SubscriptionBroker.publish('personAdded', { 'name' => 'Alice' })
+      expect(payloads).to be_empty
+    end
+
+    it 'enforces the subscription count before registering callbacks' do
+      query = 'subscription { personAdded { name } personAdded { name } }'
+      expect do
+        exec_with_sub.subscribe(query, max_subscriptions: 1) { nil }
+      end.to raise_error(GenQL::ExecutionError, /limit/)
+    end
+
+    it 'validates nested fields before registering subscriptions' do
+      expect do
+        exec_with_sub.subscribe('subscription { personAdded { unknownField } }') { nil }
       end.to raise_error(GenQL::ExecutionError, /unknownField/)
     end
   end
@@ -235,7 +257,10 @@ RSpec.describe GenQL::Executor do
     it 'passes context to the resolver' do
       received_ctx = nil
       qt = GenQL::ObjectType.new('Query') do
-        field(:whoami, GenQL::StringType) { |_p, _a, ctx| received_ctx = ctx; ctx[:user] }
+        field(:whoami, GenQL::StringType) do |_p, _a, ctx|
+          received_ctx = ctx
+          ctx[:user]
+        end
       end
       s = GenQL::Schema.new(query: qt)
       described_class.new(s).execute('{ whoami }', context: { user: 'alice' })
@@ -245,7 +270,10 @@ RSpec.describe GenQL::Executor do
     it 'defaults context to an empty hash when omitted' do
       received_ctx = nil
       qt = GenQL::ObjectType.new('Query') do
-        field(:ctx_check, GenQL::StringType) { |_p, _a, ctx| received_ctx = ctx; 'ok' }
+        field(:ctx_check, GenQL::StringType) do |_p, _a, ctx|
+          received_ctx = ctx
+          'ok'
+        end
       end
       s = GenQL::Schema.new(query: qt)
       described_class.new(s).execute('{ ctx_check }')

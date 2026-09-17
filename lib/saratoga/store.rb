@@ -36,41 +36,50 @@ module Saratoga
   module Store
     class << self
       def varieties
-        db.execute('SELECT id, name, species, season, notes FROM varieties ORDER BY id').map do |row|
-          Variety.new(id: row['id'], name: row['name'], species: row['species'],
-                      season: row['season'], notes: row['notes'])
+        with_db do |db|
+          db.execute('SELECT id, name, species, season, notes FROM varieties ORDER BY id').map do |row|
+            Variety.new(id: row['id'], name: row['name'], species: row['species'],
+                        season: row['season'], notes: row['notes'])
+          end
         end
       end
 
       def orchards
-        db.execute('SELECT id, name, location, established_year FROM orchards ORDER BY id').map do |row|
-          variety_ids = db.execute(
-            'SELECT variety_id FROM orchard_varieties WHERE orchard_id = ? ORDER BY variety_id',
-            [row['id']]
-          ).map { |r| r['variety_id'] }
+        with_db do |db|
+          db.execute('SELECT id, name, location, established_year FROM orchards ORDER BY id').map do |row|
+            variety_ids = db.execute(
+              'SELECT variety_id FROM orchard_varieties WHERE orchard_id = ? ORDER BY variety_id',
+              [row['id']]
+            ).map { |r| r['variety_id'] }
 
-          Orchard.new(id: row['id'], name: row['name'], location: row['location'],
-                      established_year: row['established_year'], variety_ids: variety_ids)
+            Orchard.new(id: row['id'], name: row['name'], location: row['location'],
+                        established_year: row['established_year'], variety_ids: variety_ids)
+          end
         end
       end
 
       def harvests
-        db.execute(
-          'SELECT id, orchard_id, variety_id, quantity_kg, harvested_at, notes FROM harvests ORDER BY id'
-        ).map { |row| harvest_from_row(row) }
+        with_db do |db|
+          db.execute(
+            'SELECT id, orchard_id, variety_id, quantity_kg, harvested_at, notes FROM harvests ' \
+            'ORDER BY CAST(SUBSTR(id, 2) AS INTEGER)'
+          ).map { |row| harvest_from_row(row) }
+        end
       end
 
       # Mutation helpers --------------------------------------------------
 
       def add_harvest(orchard_id:, variety_id:, quantity_kg:, harvested_at:, notes: nil)
-        next_id = next_harvest_id
-        db.execute(
-          'INSERT INTO harvests (id, orchard_id, variety_id, quantity_kg, harvested_at, notes) ' \
-          'VALUES (?, ?, ?, ?, ?, ?)',
-          [next_id, orchard_id, variety_id, quantity_kg, harvested_at, notes]
-        )
-        Harvest.new(id: next_id, orchard_id: orchard_id, variety_id: variety_id,
-                    quantity_kg: quantity_kg, harvested_at: harvested_at, notes: notes)
+        with_db do |db|
+          next_id = next_harvest_id(db)
+          db.execute(
+            'INSERT INTO harvests (id, orchard_id, variety_id, quantity_kg, harvested_at, notes) ' \
+            'VALUES (?, ?, ?, ?, ?, ?)',
+            [next_id, orchard_id, variety_id, quantity_kg, harvested_at, notes]
+          )
+          Harvest.new(id: next_id, orchard_id: orchard_id, variety_id: variety_id,
+                      quantity_kg: quantity_kg, harvested_at: harvested_at, notes: notes)
+        end
       end
 
       # Reset the database to a clean seeded state (used for test isolation).
@@ -80,11 +89,11 @@ module Saratoga
 
       private
 
-      def db
-        Database.connection
+      def with_db(&)
+        Database.synchronize(&)
       end
 
-      def next_harvest_id
+      def next_harvest_id(db)
         max_row = db.execute('SELECT MAX(CAST(SUBSTR(id, 2) AS INTEGER)) AS max_n FROM harvests').first
         n = (max_row && max_row['max_n'] ? max_row['max_n'] : 0) + 1
         "h#{n}"

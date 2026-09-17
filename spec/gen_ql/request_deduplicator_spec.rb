@@ -230,6 +230,12 @@ RSpec.describe GenQL::Executor, 'with request deduplication' do
     expect(call_log.count(:touch)).to eq 2
   end
 
+  it 'does not deduplicate documents containing a mutation after a query' do
+    query = '{ ping } mutation { touch }'
+    2.times { exec.execute(query) }
+    expect(call_log.count(:touch)).to eq 2
+  end
+
   it 'treats different query strings as distinct cache entries' do
     exec.execute('{ ping }')
     exec.execute('query { ping }')

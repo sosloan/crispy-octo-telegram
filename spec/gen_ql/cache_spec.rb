@@ -137,9 +137,9 @@ RSpec.describe GenQL::Cache do
 
   describe 'thread safety' do
     it 'handles concurrent writes without data loss' do
-      10.times.map { |i|
+      10.times.map do |i|
         Thread.new { cache.write("key#{i}", i) }
-      }.each(&:join)
+      end.each(&:join)
       expect(cache.size).to eq 10
     end
 

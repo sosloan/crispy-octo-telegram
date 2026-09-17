@@ -42,7 +42,6 @@ RSpec.describe SaratogaApp do
     end
 
     it 'returns 200 with connection data for a valid query' do
-    it 'returns 200 with data for a valid query' do
       post_genql('{ orchards { nodes { name } } }')
       expect(last_response.status).to eq 200
       body = JSON.parse(last_response.body)
@@ -71,14 +70,47 @@ RSpec.describe SaratogaApp do
       expect(last_response.status).to eq 400
     end
 
+    it 'rejects a non-object request body' do
+      post '/genql', JSON.generate('query'), 'CONTENT_TYPE' => 'application/json'
+      expect(last_response.status).to eq 400
+    end
+
+    it 'rejects a non-object context' do
+      post '/genql',
+           JSON.generate({ 'query' => '{ orchards { nodes { id } } }', 'context' => 'admin' }),
+           'CONTENT_TYPE' => 'application/json'
+      expect(last_response.status).to eq 400
+    end
+
+    it 'does not expose unexpected exception details' do
+      allow(SaratogaApp::EXECUTOR).to receive(:execute).and_raise(StandardError, 'database password leaked')
+      post_genql('{ orchards { nodes { id } } }')
+      expect(last_response.status).to eq 500
+      expect(last_response.body).to include('Internal server error')
+      expect(last_response.body).not_to include('database password leaked')
+    end
+
     it 'executes a mutation via POST' do
       q = 'mutation { addHarvest(orchard_id: "o1", variety_id: "v1", ' \
           'quantity_kg: 500, harvested_at: "2024-08-01") { id quantity_kg } }'
+      token = %w[test token].join('-')
+      ENV['SARATOGA_API_TOKEN'] = token
+      header 'Authorization', ['Bearer', token].join(' ')
       post_genql(q)
       expect(last_response.status).to eq 200
       body    = JSON.parse(last_response.body)
       harvest = body['data']['addHarvest']
       expect(harvest['quantity_kg']).to eq 500
+    ensure
+      ENV.delete('SARATOGA_API_TOKEN')
+      header 'Authorization', nil
+    end
+
+    it 'requires authentication for mutations' do
+      q = 'mutation { addHarvest(orchard_id: "o1", variety_id: "v1", ' \
+          'quantity_kg: 500, harvested_at: "2024-08-01") { id } }'
+      post_genql(q)
+      expect(last_response.status).to eq 401
     end
 
     it 'returns nested connection data for an orchard' do
@@ -86,11 +118,6 @@ RSpec.describe SaratogaApp do
       expect(last_response.status).to eq 200
       orchards = JSON.parse(last_response.body)['data']['orchards']['nodes']
       expect(orchards.first['varieties']['nodes']).to be_an(Array)
-    it 'returns nested orchard data' do
-      post_genql('{ orchards { nodes { name varieties { name } } } }')
-      expect(last_response.status).to eq 200
-      orchards = JSON.parse(last_response.body)['data']['orchards']['nodes']
-      expect(orchards.first['varieties']).to be_an(Array)
     end
   end
 
@@ -149,11 +176,15 @@ RSpec.describe SaratogaApp do
       expect(body[1]['errors'].first['message']).to match(/query/)
     end
 
-    it 'returns an empty array for an empty batch' do
+    it 'rejects an empty batch' do
       post_batch([])
+      expect(last_response.status).to eq 400
+    end
+
+    it 'returns an error entry for a non-object batch item' do
+      post_batch(['invalid'])
       expect(last_response.status).to eq 200
-      body = JSON.parse(last_response.body)
-      expect(body).to eq []
+      expect(JSON.parse(last_response.body).first['errors']).not_to be_empty
     end
 
     it 'supports context per batch item' do
@@ -162,6 +193,18 @@ RSpec.describe SaratogaApp do
       expect(last_response.status).to eq 200
       body = JSON.parse(last_response.body)
       expect(body[0]['data']['orchards']['nodes']).to be_an(Array)
+    end
+
+    describe 'health endpoints' do
+      it 'reports liveness' do
+        get '/health/live'
+        expect(last_response.status).to eq 200
+      end
+
+      it 'reports readiness when the database is available' do
+        get '/health/ready'
+        expect(last_response.status).to eq 200
+      end
     end
   end
 end
