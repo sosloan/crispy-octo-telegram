@@ -145,6 +145,19 @@ RSpec.describe Saratoga::Store do
       Saratoga::Store.reset!
       expect(Saratoga::Store.harvests.length).to eq 4
     end
+
+    it 'assigns unique ids during concurrent writes' do
+      threads = 20.times.map do
+        Thread.new do
+          Saratoga::Store.add_harvest(
+            orchard_id: 'o1', variety_id: 'v1',
+            quantity_kg: 1, harvested_at: '2025-01-01'
+          )
+        end
+      end
+      ids = threads.map(&:value).map(&:id)
+      expect(ids.uniq.length).to eq 20
+    end
   end
 
   describe '#reset!' do

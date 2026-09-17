@@ -17,6 +17,7 @@ module GenQL
   class Parser
     OP_TOKENS    = %i[QUERY MUTATION SUBSCRIPTION].freeze
     VALUE_TOKENS = %i[STRING INT FLOAT TRUE FALSE NULL NAME].freeze
+    MAX_DEPTH = 50
 
     def initialize(tokens)
       @tokens = tokens
@@ -51,18 +52,20 @@ module GenQL
       AST::Operation.new(op_type, name, selections)
     end
 
-    def parse_selection_set
+    def parse_selection_set(depth = 1)
+      raise ParseError, "Query nesting exceeds maximum depth of #{MAX_DEPTH}" if depth > MAX_DEPTH
+
       fields = []
-      fields << parse_field while peek.type == :NAME
+      fields << parse_field(depth) while peek.type == :NAME
       fields
     end
 
-    def parse_field
+    def parse_field(depth)
       name      = expect(:NAME).value
       arguments = peek.type == :LPAREN ? parse_arguments : {}
       selections = if peek.type == :LBRACE
                      expect(:LBRACE)
-                     sel = parse_selection_set
+                     sel = parse_selection_set(depth + 1)
                      expect(:RBRACE)
                      sel
                    else

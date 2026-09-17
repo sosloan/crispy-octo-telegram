@@ -131,6 +131,11 @@ class SaratogaApp < Sinatra::Base
     subscription_ids = []
 
     ws.on :message do |event|
+      if event.data.bytesize > MAX_REQUEST_BYTES
+        ws.send(JSON.generate({ errors: [{ message: 'Message too large' }] }))
+        next
+      end
+
       payload = JSON.parse(event.data)
       unless payload.is_a?(Hash)
         ws.send(JSON.generate({ errors: [{ message: 'Message must be a JSON object' }] }))
@@ -170,8 +175,8 @@ class SaratogaApp < Sinatra::Base
   get '/schema' do
     schema_types = [Saratoga::QueryType, Saratoga::MutationType, Saratoga::SubscriptionType,
                     Saratoga::OrchardType, Saratoga::VarietyType, Saratoga::HarvestType,
-                    Saratoga::OrchardsConnection, Saratoga::VarietiesConnection,
-                    Saratoga::HarvestsConnection, Saratoga::VarietiesInOrchardConnection,
+                    Saratoga::OrchardConnection, Saratoga::VarietyConnection,
+                    Saratoga::HarvestConnection, Saratoga::VarietiesInOrchardConnection,
                     Saratoga::HarvestsInOrchardConnection, GenQL::PageInfoType]
     types = {}
     schema_types.each do |type|

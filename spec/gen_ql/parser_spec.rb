@@ -51,6 +51,13 @@ RSpec.describe GenQL::Parser do
       expect(variety_field.selections.map(&:name)).to eq %w[name season]
     end
 
+    it 'rejects excessive query nesting' do
+      query = ('field { ' * (GenQL::Parser::MAX_DEPTH + 1)) +
+              'value' +
+              (' }' * (GenQL::Parser::MAX_DEPTH + 1))
+      expect { parse("{ #{query} }") }.to raise_error(GenQL::ParseError, /maximum depth/)
+    end
+
     it 'parses a field with string argument' do
       doc  = parse('{ orchard(id: "o1") { name } }')
       args = doc.operations.first.selections.first.arguments

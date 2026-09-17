@@ -126,8 +126,6 @@ RSpec.describe 'Stress tests' do
               id name location established_year
               varieties { nodes { id name species season notes } }
               harvests  { nodes { id quantity_kg harvested_at } }
-              varieties { id name species season notes }
-              harvests  { id quantity_kg harvested_at }
             }
           }
           varieties { nodes { id name species season notes } }
