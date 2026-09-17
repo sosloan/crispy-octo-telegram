@@ -154,13 +154,7 @@ RSpec.describe 'Stress tests' do
     end
 
     it 'accumulates no errors across 200 successful read queries' do
-      query = '{ orchards { nodes { name location varieties { nodes { name } } harvests { nodes { id } } } } }'
-      result = executor.execute('{ harvests { nodes { id } } }')
-      expect(result[:data]['harvests']['nodes'].length).to eq(4 + 200)
-    end
-
-    it 'accumulates no errors across 200 successful read queries' do
-      query = '{ orchards { nodes { name location varieties { name } harvests { id quantity_kg } } } }'
+      query = '{ orchards { nodes { name location varieties { nodes { name } } harvests { nodes { id quantity_kg } } } } }'
       errors_seen = []
       200.times do
         result = executor.execute(query)
@@ -312,7 +306,6 @@ RSpec.describe 'Stress tests' do
       result = executor.execute(
         '{ orchards { nodes { id name varieties { nodes { name } } harvests { nodes { id quantity_kg } } } } }'
       )
-      result   = executor.execute('{ orchards { nodes { id name varieties { name } harvests { id quantity_kg } } } }')
       orchards = result[:data]['orchards']['nodes']
       expect(orchards.length).to eq 3
       expect(orchards.all? { |o| o['harvests']['nodes'].is_a?(Array) }).to be true
