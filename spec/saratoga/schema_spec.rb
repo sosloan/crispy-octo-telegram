@@ -308,6 +308,15 @@ RSpec.describe 'Saratoga schema' do
       expect(result[:data]['harvests']['nodes'].length).to eq 5
       expect(result[:data]['harvests']['page_info']['total_count']).to eq 5
     end
+
+    it 'rejects invalid mutation input' do
+      result = executor.execute(
+        'mutation { addHarvest(orchard_id: "missing", variety_id: "v1", ' \
+        'quantity_kg: -1, harvested_at: "not-a-date") { id } }'
+      )
+      expect(result[:errors]).not_to be_empty
+      expect(Saratoga::Store.harvests.length).to eq 4
+    end
   end
 
   describe 'error handling' do

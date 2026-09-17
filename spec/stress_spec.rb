@@ -8,7 +8,7 @@ CONCURRENT_STRESS_QUERIES = [
   '{ orchards { nodes { name } } }',
   '{ orchards { nodes { id name location established_year } } }',
   '{ orchards { nodes { name varieties { nodes { name season } } } } }',
-  '{ orchards { nodes { name varieties { name season } } } }',
+  '{ orchards { nodes { name varieties { nodes { name season } } } } }',
   '{ varieties { nodes { id name species season notes } } }',
   '{ harvests { nodes { id orchard_id variety_id quantity_kg harvested_at } } }'
 ].freeze

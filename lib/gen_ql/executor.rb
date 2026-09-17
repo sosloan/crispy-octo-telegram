@@ -97,13 +97,11 @@ module GenQL
 
     private
 
-    # Returns true when +query_string+ begins with the "mutation" keyword,
-    # indicating that the operation has side-effects and must not be
-    # deduplicated or cached.  Matching is case-insensitive to handle any
-    # client capitalisation, although the GenQL lexer normalises keywords to
-    # lower-case in practice.
+    # Returns true when any operation in the document is a mutation, ensuring
+    # mixed-operation documents are never deduplicated or cached.
     def mutation?(query_string)
-      query_string.lstrip.downcase.start_with?('mutation')
+      tokens = Lexer.new(query_string).tokenize
+      Parser.new(tokens).parse.operations.any? { |operation| operation.type.to_s == 'mutation' }
     end
 
     # Build the cache key used to identify a unique request.

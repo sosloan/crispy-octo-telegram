@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require 'sqlite3'
+require 'fileutils'
 
 module Saratoga
   # ---------------------------------------------------------------------------
@@ -17,6 +18,9 @@ module Saratoga
   module Database
     DB_PATH_ENV = 'SARATOGA_DATABASE_PATH'
     TEST_ENV    = 'test'
+    CONNECTION_MUTEX = Mutex.new
+    QUERY_MUTEX = Mutex.new
+    private_constant :CONNECTION_MUTEX, :QUERY_MUTEX
 
     SEED_VARIETIES = [
       { id: 'v1', name: 'Gravenstein',    species: 'Malus domestica',
@@ -56,19 +60,27 @@ module Saratoga
       # call.  Thread-safety is acceptable here because SQLite serialises all
       # writes and the connection is shared read-only after setup.
       def connection
-        @connection ||= open_and_setup
+        CONNECTION_MUTEX.synchronize { @connection ||= open_and_setup }
+      end
+
+      def synchronize
+        QUERY_MUTEX.synchronize { yield connection }
       end
 
       # Replaces the current connection with a brand-new one.  All in-memory
       # state is discarded and the schema + seed data are re-applied.
       # Intended for test isolation (Store.reset! delegates here).
       def reset!
-        begin
-          @connection&.close
-        rescue SQLite3::Exception
-          # Ignore errors from closing an already-closed connection
+        QUERY_MUTEX.synchronize do
+          CONNECTION_MUTEX.synchronize do
+            begin
+              @connection&.close
+            rescue SQLite3::Exception
+              # Ignore errors from closing an already-closed connection
+            end
+            @connection = open_and_setup
+          end
         end
-        @connection = open_and_setup
       end
 
       private
@@ -82,9 +94,13 @@ module Saratoga
       end
 
       def open_and_setup
-        db = SQLite3::Database.new(db_uri)
+        uri = db_uri
+        FileUtils.mkdir_p(File.dirname(File.expand_path(uri))) unless uri == ':memory:'
+        db = SQLite3::Database.new(uri)
         db.results_as_hash = true
+        db.busy_timeout = 5_000
         db.execute('PRAGMA foreign_keys = ON')
+        db.execute('PRAGMA journal_mode = WAL') unless test_env?
         create_schema(db)
         seed(db)
         db

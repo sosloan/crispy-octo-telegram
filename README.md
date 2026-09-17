@@ -52,7 +52,7 @@ spec/                     # RSpec test suite
 
 ```sh
 bundle install
-bundle exec rackup
+bundle exec puma -C config/puma.rb config.ru
 ```
 
 The server starts on `http://localhost:9292`.
@@ -68,7 +68,9 @@ SARATOGA_DATABASE_PATH=/var/data/saratoga.db bundle exec rackup
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET`  | `/`  | Health check |
+| `GET`  | `/`  | Homepage or API service information |
+| `GET`  | `/health/live` | Process liveness check |
+| `GET`  | `/health/ready` | Database readiness check |
 | `GET`  | `/schema` | Schema introspection (JSON) |
 | `POST` | `/genql` | Execute a GenQL query or mutation |
 
@@ -78,7 +80,7 @@ SARATOGA_DATABASE_PATH=/var/data/saratoga.db bundle exec rackup
 # List the first page of orchards with their varieties (infinite scroll)
 curl -s -XPOST http://localhost:9292/genql \
   -H 'Content-Type: application/json' \
-  -d '{"query":"{ orchards(first: 2) { nodes { name location varieties { name season } } page_info { has_next_page end_cursor } } }"}'
+  -d '{"query":"{ orchards(first: 2) { nodes { name location varieties { nodes { name season } } } page_info { has_next_page end_cursor } } }"}'
 
 # Fetch the next page using the cursor returned above
 curl -s -XPOST http://localhost:9292/genql \
@@ -88,9 +90,10 @@ curl -s -XPOST http://localhost:9292/genql \
 # Fetch a single orchard by id
 curl -s -XPOST http://localhost:9292/genql \
   -H 'Content-Type: application/json' \
-  -d '{"query":"{ orchard(id: \"o1\") { name harvests { quantity_kg harvested_at } } }"}'
+  -d '{"query":"{ orchard(id: \"o1\") { name harvests { nodes { quantity_kg harvested_at } } } }"}'
 
 # Record a new harvest
+# Include the bearer authorization header configured for your deployment.
 curl -s -XPOST http://localhost:9292/genql \
   -H 'Content-Type: application/json' \
   -d '{"query":"mutation { addHarvest(orchard_id: \"o1\", variety_id: \"v1\", quantity_kg: 800, harvested_at: \"2024-09-01\") { id quantity_kg } }"}'
@@ -98,22 +101,39 @@ curl -s -XPOST http://localhost:9292/genql \
 
 ---
 
-### Offline support (data persistence)
+### Data persistence
 
-The server operates entirely without an external database.  All static
-reference data (orchards, apple varieties) is embedded as seed data.  Harvests
-recorded via the `addHarvest` mutation are saved to a local JSON file so they
-survive server restarts.
+The server uses SQLite and requires no external database service. Static
+reference data is inserted when a new database is created, and mutations are
+written transactionally to the configured database file.
 
-By default the file is written to `data/store.json` in the project root.
-Override the path with the `SARATOGA_DATA_FILE` environment variable:
+By default the file is `saratoga.db` in the working directory. In production,
+mount durable storage and set `SARATOGA_DATABASE_PATH`:
 
 ```sh
-SARATOGA_DATA_FILE=/var/data/saratoga.json bundle exec rackup
+SARATOGA_DATABASE_PATH=/var/data/saratoga.db bundle exec puma -C config/puma.rb config.ru
 ```
 
-When no file exists the server falls back to the built-in seed harvests,
-so the service starts cleanly even on a brand-new deployment.
+### Production deployment
+
+Copy `.env.example` into your deployment configuration and provide
+`SARATOGA_API_TOKEN` through a secret manager. Production startup fails closed
+when this token is absent, and mutation requests require it as a bearer token.
+Keep the database file on a persistent volume and run one application process;
+Puma threads are safe, but SQLite is not intended for a multi-worker cluster.
+
+Build and run the included container:
+
+```sh
+docker build -t saratoga-genql .
+docker run --rm -p 9292:9292 \
+  -e SARATOGA_API_TOKEN \
+  -v saratoga-data:/app/data \
+  saratoga-genql
+```
+
+Terminate TLS at the load balancer or reverse proxy. Configure probes against
+`/health/live` and `/health/ready`, and back up the SQLite volume regularly.
 
 ---
 
@@ -187,7 +207,7 @@ Arguments accepted by every list field:
 query {
   orchard(id: "o1") {
     name
-    varieties { name species notes }
+    varieties { nodes { name species notes } }
   }
 }
 
